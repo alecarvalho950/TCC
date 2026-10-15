@@ -1,0 +1,15 @@
+# Datasets de treino e validação (imagens grandes)
+/dados/
+/val/
+
+# Modelos treinados e resultados gerados
+/codigos/*.keras
+/codigos/grafico_*.png
+/codigos/matriz_confusao_*.png
+/codigos/tabela_comparativa_modelos.csv
+
+# Ambiente e configurações locais
+/venv/
+/.idea/
+__pycache__/
+*.py[cod]
