@@ -24,7 +24,8 @@ métricas em uma tabela e um gráfico de ranking.
 Clone o projeto e entre na pasta criada:
 
 ```bash
-git clone https://github.com/Gili10/estudos-imagens-celulares.git
+git clone https://github.com/alecarvalho950/TCC.git
+
 cd estudos-imagens-celulares
 ```
 
