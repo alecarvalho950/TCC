@@ -156,6 +156,36 @@ O treinamento de redes neurais pode levar algum tempo e requer espaço livre em
 disco para os modelos e resultados. Os dados, modelos treinados e arquivos
 gerados estão listados no `.gitignore` e não são enviados ao GitHub.
 
+## Referências Bibliográficas
+
+As arquiteturas utilizadas neste estudo são fundamentadas em trabalhos
+acadêmicos que investigam profundidade, conexões residuais e escalabilidade
+eficiente em redes neurais convolucionais.
+
+### VGG16 — Very Deep Convolutional Networks for Large-Scale Image Recognition
+
+Empilha convoluções pequenas de 3 × 3 para investigar como o aumento da
+profundidade melhora o reconhecimento de imagens em larga escala.
+
+- **Autores:** Karen Simonyan e Andrew Zisserman (2014)
+- **Artigo original:** [Acessar no arXiv](https://arxiv.org/abs/1409.1556)
+
+### ResNet50 — Deep Residual Learning for Image Recognition
+
+Introduz conexões residuais, que facilitam o treinamento de redes profundas e
+ajudam a lidar com a degradação da acurácia à medida que a profundidade aumenta.
+
+- **Autores:** Kaiming He, Xiangyu Zhang, Shaoqing Ren e Jian Sun (CVPR 2016)
+- **Artigo original:** [Acessar no CVF Open Access](https://www.cv-foundation.org/openaccess/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html)
+
+### EfficientNet — Rethinking Model Scaling for Convolutional Neural Networks
+
+Propõe o escalonamento composto, que ajusta de forma coordenada profundidade,
+largura e resolução para equilibrar desempenho e custo computacional.
+
+- **Autores:** Mingxing Tan e Quoc V. Le (ICML 2019)
+- **Artigo original:** [Acessar no PMLR](https://proceedings.mlr.press/v97/tan19a.html?ref=ji)
+
 ## Autores
 
 Alejandro Carvalho, Ângela Kretschmann, Giliard Gomes Martins e Gian Brustolin.

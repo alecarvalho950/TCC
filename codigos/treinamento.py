@@ -15,10 +15,11 @@ PASTA_IMAGENS = os.path.join(BASE_DIR, '../dados/train')
 # ==========================================
 IMG_SIZE = (128, 128)
 BATCH_SIZE = 32
-EPOCHS = 5  # Ajuste para o total de épocas desejado por modelo
+EPOCHS = 2  # Ajuste para o total de épocas desejado por modelo
 
 # Lista com todos os modelos que serão treinados em sequência automática
-LISTA_MODELOS = ['cnn_propria', 'vgg16', 'resnet50', 'efficientnet']
+# LISTA_MODELOS = ['cnn_propria', 'vgg16', 'resnet50', 'efficientnet']
+LISTA_MODELOS = ['cnn_propria', 'vgg16']
 
 # ==========================================
 # 2. CARREGAMENTO DOS DADOS (80% Treino / 20% Validação)
@@ -168,20 +169,18 @@ def plotar_historico(history, nome_modelo, caminho_saida):
   def fmt_loss(v, _=None):
     return f'{v:.2f}'.replace('.', ',')
 
-  def desenhar(ax, treino, valid, titulo, ylabel, maior_melhor, fmt,
-               pad_min):
+  def desenhar(ax, treino, valid, titulo, maior_melhor, fmt, pad_min):
     tam = 9 if n <= 3 else 5
     ax.plot(epocas, treino, color=COR_TREINO, marker='o', ms=tam, lw=2.2,
             label='Treino')
     ax.plot(epocas, valid, color=COR_VALID, marker='o', ms=tam, lw=2.2,
             label='Validação')
 
-    # Época do modelo salvo
+    # Época do modelo salvo (estrela sem rótulo: não entra na legenda)
     ax.axvline(x_melhor, color=COR_MELHOR, ls='--', lw=1.4, alpha=0.8,
                zorder=1)
     ax.scatter([x_melhor], [valid[melhor]], marker='*', s=320,
-               color=COR_MELHOR, edgecolor='white', zorder=6,
-               label=f'Melhor época ({x_melhor}) - modelo salvo')
+               color=COR_MELHOR, edgecolor='white', zorder=6)
 
     # Valores na melhor época (o maior fica acima, o menor abaixo)
     v_cima = valid[melhor] >= treino[melhor]
@@ -197,7 +196,6 @@ def plotar_historico(history, nome_modelo, caminho_saida):
 
     ax.set_title(titulo, fontsize=13, weight='bold', pad=12)
     ax.set_xlabel('Época', fontsize=11)
-    ax.set_ylabel(ylabel, fontsize=11)
     ax.set_xlim(0.5, n + 0.5)
     if n <= 20:
       ax.set_xticks(epocas)
@@ -229,17 +227,14 @@ def plotar_historico(history, nome_modelo, caminho_saida):
             weight='bold', color=COR_MELHOR)
 
   fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6.2))
-  desenhar(ax1, acc, val_acc,
-           'Acurácia  (quanto MAIOR, melhor)', 'Acurácia', True, fmt_pct,
-           0.03)
-  desenhar(ax2, loss, val_loss,
-           'Perda / Loss  (quanto MENOR, melhor)', 'Perda/Loss', False, fmt_loss,
-           0.08)
+  desenhar(ax1, acc, val_acc, 'Acurácia', True, fmt_pct, 0.03)
+  desenhar(ax2, loss, val_loss, 'Perda / Loss', False, fmt_loss, 0.08)
 
   fig.suptitle(f'Histórico de treinamento - {nome_modelo.upper()}',
                fontsize=15, weight='bold', y=0.995)
+  # Legenda superior: apenas Treino e Validação
   handles, rotulos = ax1.get_legend_handles_labels()
-  fig.legend(handles, rotulos, loc='upper center', ncol=3, fontsize=10.5,
+  fig.legend(handles, rotulos, loc='upper center', ncol=2, fontsize=10.5,
              frameon=False, bbox_to_anchor=(0.5, 0.955))
 
   resumo = (

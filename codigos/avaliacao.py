@@ -26,12 +26,16 @@ BATCH_SIZE = 32
 # Classe considerada "positiva" (a que queremos detectar)
 CLASSE_POSITIVA = 'Parasitized'
 
-# Cores
+# Cores da Matriz de Confusão
 COR_ACERTO = '#C8E6C9'
 COR_ERRO = '#FFCDD2'
 COR_ERRO_CRITICO = '#EF9A9A'
 COR_TEXTO = '#1B1B1B'
-COR_BARRA = '#1F5FA8'
+COR_TEXTO_SUAVE = '#555555'
+
+# Cores distintas para cada métrica de desempenho
+CORES_METRICAS = ['#1F5FA8', '#2E7D32', '#8E44AD', '#D35400', '#16A085']
+COR_FUNDO_BARRA = '#EAECEE'
 
 
 # ==========================================
@@ -72,115 +76,149 @@ def calcular_metricas(tp, fn, fp, tn):
 
 
 def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
-    """Gera figura com a matriz de confusão (esquerda) e métricas (direita)."""
+    """Gera figura com a matriz de confusão (esq.) e barras de métricas (dir.).
+
+    Os dois painéis compartilham a mesma caixa (mesmo topo e mesma base) e o
+    mesmo sistema de coordenadas verticais, então as 5 barras ficam alinhadas
+    com o bloco de 2 linhas da matriz. Os títulos de seção ficam na mesma
+    altura, posicionados em coordenadas da figura (sem depender de `pad`).
+    """
     pos = class_names.index(CLASSE_POSITIVA)
     neg = 1 - pos
 
-    tp = cm[pos, pos]  # parasitada  -> previu parasitada
-    fn = cm[pos, neg]  # parasitada  -> previu não infectada
-    fp = cm[neg, pos]  # não infect. -> previu parasitada
-    tn = cm[neg, neg]  # não infect. -> previu não infectada
+    tp = cm[pos, pos]
+    fn = cm[pos, neg]
+    fp = cm[neg, pos]
+    tn = cm[neg, neg]
 
-    total_pos = tp + fn  # total de células realmente parasitadas
-    total_neg = fp + tn  # total de células realmente não infectadas
+    total_pos = tp + fn
+    total_neg = fp + tn
     total = total_pos + total_neg
     m = calcular_metricas(tp, fn, fp, tn)
 
-    fig = plt.figure(figsize=(15.5, 7.2))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1], wspace=0.45)
+    # Eixo vertical compartilhado: 0..2 = bloco de dados; valores negativos =
+    # "zona de cabeçalho" acima dele (rótulos das colunas na matriz).
+    Y_BASE = 2.0
+    Y_TOPO = -0.66
+
+    fig = plt.figure(figsize=(16, 8.8))
+    gs = fig.add_gridspec(
+        1, 2, width_ratios=[1.15, 1], wspace=0.36,
+        left=0.05, right=0.97, top=0.74, bottom=0.13,
+    )
     ax_cm = fig.add_subplot(gs[0])
     ax_m = fig.add_subplot(gs[1])
 
     # ---------- Painel esquerdo: matriz de confusão ----------
-    # (linha, coluna): (título, cor, valor, total da linha, descrição)
     celulas = {
-        (0, 0): ('Verdadeiro Positivo (VP)', COR_ACERTO, tp, total_pos,
-                 'Parasitada classificada\ncomo parasitada'),
-        (0, 1): ('Falso Negativo (FN)', COR_ERRO_CRITICO, fn, total_pos,
-                 'Parasitada classificada\ncomo não infectada  [erro crítico]'),
-        (1, 0): ('Falso Positivo (FP)', COR_ERRO, fp, total_neg,
-                 'Não infectada classificada\ncomo parasitada  [falso alarme]'),
-        (1, 1): ('Verdadeiro Negativo (VN)', COR_ACERTO, tn, total_neg,
-                 'Não infectada classificada\ncomo não infectada'),
-    }
-    nomes_linha = {
-        0: f'Parasitada\n(real: {fmt_int(total_pos)} imagens)',
-        1: f'Não infectada\n(real: {fmt_int(total_neg)} imagens)',
+        (0, 0): ('Verdadeiro Positivo (VP)', COR_ACERTO, tp, total_pos),
+        (0, 1): ('Falso Negativo (FN)', COR_ERRO_CRITICO, fn, total_pos),
+        (1, 0): ('Falso Positivo (FP)', COR_ERRO, fp, total_neg),
+        (1, 1): ('Verdadeiro Negativo (VN)', COR_ACERTO, tn, total_neg),
     }
 
     ax_cm.set_xlim(0, 2)
-    ax_cm.set_ylim(2, 0)
-    for (i, j), (titulo, cor, valor, tot_linha, desc) in celulas.items():
+    ax_cm.set_ylim(Y_BASE, Y_TOPO)
+    for (i, j), (titulo, cor, valor, tot_linha) in celulas.items():
         ax_cm.add_patch(
-            Rectangle((j, i), 1, 1, facecolor=cor, edgecolor='white', lw=5)
+            Rectangle((j, i), 1, 1, facecolor=cor, edgecolor='white', lw=6)
         )
         pct_linha = 100.0 * valor / tot_linha if tot_linha > 0 else 0.0
         cx, cy = j + 0.5, i + 0.5
-        ax_cm.text(cx, cy - 0.30, titulo, ha='center', va='center',
-                   fontsize=11.5, weight='bold', color=COR_TEXTO)
-        ax_cm.text(cx, cy - 0.08, fmt_int(valor), ha='center', va='center',
-                   fontsize=28, weight='bold', color=COR_TEXTO)
-        ax_cm.text(cx, cy + 0.13, 'imagens', ha='center', va='center',
-                   fontsize=10, color=COR_TEXTO)
-        ax_cm.text(cx, cy + 0.26,
-                   f'{fmt_pct(pct_linha)} das ' +
-                   ('parasitadas' if i == 0 else 'não infectadas'),
+
+        # Quatro "camadas" com respiro generoso entre elas
+        ax_cm.text(cx, cy - 0.34, titulo, ha='center', va='center',
+                   fontsize=12.5, weight='bold', color=COR_TEXTO)
+        ax_cm.text(cx, cy - 0.06, fmt_int(valor), ha='center', va='center',
+                   fontsize=32, weight='bold', color=COR_TEXTO)
+        ax_cm.text(cx, cy + 0.15, 'imagens', ha='center', va='center',
+                   fontsize=11, color=COR_TEXTO)
+        ax_cm.text(cx, cy + 0.34, f'({fmt_pct(pct_linha)} da classe real)',
                    ha='center', va='center', fontsize=10.5, weight='bold',
-                   color=COR_TEXTO)
-        ax_cm.text(cx, cy + 0.42, desc, ha='center', va='center',
-                   fontsize=8.5, style='italic', color='#444444',
-                   linespacing=1.15)
+                   color='#333333')
 
-    ax_cm.set_xticks([0.5, 1.5])
-    ax_cm.set_xticklabels(['Parasitada', 'Não infectada'], fontsize=11)
-    ax_cm.set_yticks([0.5, 1.5])
-    ax_cm.set_yticklabels([nomes_linha[0], nomes_linha[1]], fontsize=11)
-    ax_cm.tick_params(length=0)
-    ax_cm.xaxis.set_ticks_position('top')
-    ax_cm.xaxis.set_label_position('top')
-    ax_cm.set_xlabel('O QUE O MODELO PREVIU', fontsize=11, weight='bold',
-                     labelpad=12)
-    ax_cm.set_ylabel('O QUE A IMAGEM REALMENTE É', fontsize=11, weight='bold',
-                     labelpad=12)
-    for s in ax_cm.spines.values():
-        s.set_visible(False)
-    ax_cm.set_title('Matriz de confusão', fontsize=13, weight='bold', pad=75)
+    # Cabeçalho das colunas (dentro da zona de cabeçalho, com margem do topo
+    # da matriz): nome da classe em destaque + total real logo abaixo.
+    for j, (nome, tot) in enumerate([('Parasitada', total_pos),
+                                     ('Não infectada', total_neg)]):
+        ax_cm.text(j + 0.5, -0.31, nome, ha='center', va='center',
+                   fontsize=14, weight='bold', color=COR_TEXTO)
+        ax_cm.text(j + 0.5, -0.14, f'(real: {fmt_int(tot)} imagens)',
+                   ha='center', va='center', fontsize=11,
+                   color=COR_TEXTO_SUAVE)
 
-    # ---------- Painel direito: métricas ----------
+    # Rótulo do eixo + fio fino separando-o das colunas
+    ax_cm.plot([0.04, 1.96], [-0.45, -0.45], color='#BDBDBD', lw=1.2,
+               solid_capstyle='round', clip_on=False)
+    ax_cm.text(1.0, -0.56, 'O QUE O MODELO PREVIU', ha='center', va='center',
+               fontsize=11, weight='bold', color=COR_TEXTO_SUAVE)
+
+    ax_cm.axis('off')
+
+    # ---------- Painel direito: métricas com barras duplas ----------
     itens = [
-        ('Acurácia', 'acertos sobre o total', m['acuracia']),
-        ('Sensibilidade', 'parasitadas detectadas', m['sensibilidade']),
-        ('Especificidade', 'não infectadas reconhecidas', m['especificidade']),
-        ('Precisão', 'quando diz "parasitada", acerta', m['precisao']),
-        ('F1-Score', 'equilíbrio precisão × sensibilidade', m['f1']),
+        ('Acurácia', m['acuracia']),
+        ('Sensibilidade', m['sensibilidade']),
+        ('Especificidade', m['especificidade']),
+        ('Precisão', m['precisao']),
+        ('F1-Score', m['f1']),
     ]
-    ys = np.arange(len(itens))[::-1]
-    valores = [v for _, _, v in itens]
-    ax_m.barh(ys, valores, color=COR_BARRA, height=0.55)
-    for y, v in zip(ys, valores):
-        ax_m.text(min(v + 1.5, 97), y, fmt_pct(v), va='center', ha='left',
-                  fontsize=12, weight='bold', color=COR_TEXTO)
+    n_itens = len(itens)
+    # As barras ocupam toda a altura útil do painel: do topo do cabeçalho da
+    # matriz (-0.58) até a base dela (2.0). Assim os dois painéis formam o
+    # mesmo "bloco" visual, com espaçamento regular entre as barras.
+    altura = 0.30
+    ys = np.linspace(-0.58 + altura / 2, Y_BASE - altura / 2, n_itens)
+    valores = [v for _, v in itens]
+
+    ax_m.set_ylim(Y_BASE, Y_TOPO)
+    ax_m.set_xlim(0, 117)
+
+    # 1. Barra de fundo (cinza clara) até 100%
+    ax_m.barh(ys, [100] * n_itens, color=COR_FUNDO_BARRA, height=altura,
+              edgecolor='none')
+
+    # 2. Barra principal por cima; valor sempre APÓS o fim da barra cinza
+    for y, v, cor in zip(ys, valores, CORES_METRICAS):
+        ax_m.barh(y, v, color=cor, height=altura)
+        ax_m.text(103, y, fmt_pct(v), va='center', ha='left', fontsize=13,
+                  weight='bold', color=COR_TEXTO)
+
     ax_m.set_yticks(ys)
-    ax_m.set_yticklabels([f'{n}\n({d})' for n, d, _ in itens], fontsize=10.5)
-    ax_m.set_xlim(0, 112)
+    ax_m.set_yticklabels([n for n, _ in itens], fontsize=12.5, weight='bold')
     ax_m.set_xticks([0, 25, 50, 75, 100])
     ax_m.set_xticklabels(['0%', '25%', '50%', '75%', '100%'])
-    ax_m.axvline(50, color='gray', ls='--', lw=1)
-    ax_m.text(50, len(itens) - 0.45, 'chute aleatório (50%)', ha='center',
-              va='bottom', fontsize=8.5, color='gray')
-    ax_m.tick_params(length=0)
+    ax_m.tick_params(axis='y', length=0, pad=14)
+    ax_m.tick_params(axis='x', length=4, pad=8, labelsize=11, color='#888888')
+
     for lado in ('top', 'right', 'left'):
         ax_m.spines[lado].set_visible(False)
-    ax_m.set_title('Métricas de desempenho', fontsize=13, weight='bold',
-                   pad=75)
+    # Eixo X limpo: vai só de 0% a 100% e fica afastado das barras
+    ax_m.spines['bottom'].set_bounds(0, 100)
+    ax_m.spines['bottom'].set_position(('outward', 16))
+    ax_m.spines['bottom'].set_color('#888888')
 
-    fig.suptitle(
-        f'Avaliação do modelo {nome_modelo} — detecção de malária em células '
-        f'sanguíneas\n(conjunto de validação: {fmt_int(total)} imagens)',
-        fontsize=14, weight='bold', y=1.14,
-    )
+    # ---------- Títulos (coordenadas da figura, alinhados entre painéis) ----
+    p_cm = ax_cm.get_position()
+    p_m = ax_m.get_position()
+    y_secao = p_cm.y1 + 0.055
+    fig.text((p_cm.x0 + p_cm.x1) / 2, y_secao, 'Matriz de confusão',
+             ha='center', va='bottom', fontsize=15, weight='bold',
+             color=COR_TEXTO)
+    fig.text((p_m.x0 + p_m.x1) / 2, y_secao, 'Métricas de desempenho',
+             ha='center', va='bottom', fontsize=15, weight='bold',
+             color=COR_TEXTO)
 
-    fig.savefig(caminho_saida, dpi=300, bbox_inches='tight', pad_inches=0.3,
+    fig.text(0.5, 0.965,
+             f'Avaliação do modelo {nome_modelo} — detecção de malária em '
+             'células sanguíneas',
+             ha='center', va='top', fontsize=18, weight='bold',
+             color=COR_TEXTO)
+    fig.text(0.5, 0.915,
+             f'(conjunto de validação: {fmt_int(total)} imagens)',
+             ha='center', va='top', fontsize=13, color=COR_TEXTO_SUAVE)
+
+    fig.savefig(caminho_saida, dpi=300, bbox_inches='tight', pad_inches=0.4,
                 facecolor='white')
     plt.close(fig)
     return m
@@ -190,7 +228,6 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
 # 3. AVALIAÇÃO EM LOTE
 # ==========================================
 def main():
-    # Imports pesados aqui dentro para permitir testar só o gráfico
     from sklearn.metrics import classification_report, confusion_matrix
     from tensorflow.keras.models import load_model
     from tensorflow.keras.utils import image_dataset_from_directory
@@ -200,11 +237,11 @@ def main():
         PASTA_IMAGENS,
         validation_split=0.2,
         subset='validation',
-        seed=123,  # Mesma semente do treinamento
+        seed=123,
         image_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         label_mode='categorical',
-        shuffle=True,  # Necessário para o split correto (ver y_true abaixo)
+        shuffle=True,
     )
     class_names = val_gen.class_names
     print(f'Classes encontradas: {class_names}')
@@ -227,9 +264,6 @@ def main():
 
         model = load_model(model_path)
 
-        # CORREÇÃO: y_true e y_pred são coletados NO MESMO loop.
-        # Como val_gen tem shuffle=True, percorrê-lo duas vezes geraria
-        # duas ordens diferentes e os rótulos não bateriam com as predições.
         y_true, y_pred = [], []
         for images, labels in val_gen:
             preds = model.predict(images, verbose=0)
