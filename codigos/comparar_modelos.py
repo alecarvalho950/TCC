@@ -10,14 +10,11 @@ from matplotlib.patches import Rectangle
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASTA_IMAGENS = os.path.join(BASE_DIR, '../dados/train')
 
-# ==========================================
-# 1. CONFIGURAÇÕES
-# ==========================================
-# Mesma pasta de imagens usada no treinamento.py / avaliacao.py
-# Pasta onde estão os arquivos .keras (também procura na pasta deste script)
-PASTA_MODELOS = BASE_DIR
+# -- CONFIGURAÇÕES --
 
-# Nome exibido no gráfico -> arquivo salvo pelo treinamento.py
+PASTA_MODELOS = BASE_DIR # Mesma pasta de imagens usada no treinamento.py / avaliacao.py
+
+# Nome exibido no gráfico
 MODELOS = {
     'CNN Própria': 'melhor_modelo_cnn_propria.keras',
     'VGG16': 'melhor_modelo_vgg16.keras',
@@ -25,22 +22,16 @@ MODELOS = {
     'EfficientNet': 'melhor_modelo_efficientnet.keras',
 }
 
-# Devem ser IGUAIS aos usados no treinamento.py e no avaliacao.py
 IMG_SIZE = (128, 128)
 BATCH_SIZE = 32
 SEED = 123
 VALIDATION_SPLIT = 0.2
 
-# Classe considerada "positiva" (a que queremos detectar)
+# Classe considerada "positiva"
 CLASSE_POSITIVA = 'Parasitized'
 
-# Tipo de média usada em Precisão / Recall / F1:
-#   'weighted avg' -> média ponderada pelo nº de imagens de cada classe
-#                     (o Recall médio fica igual à acurácia)
-#   'macro avg'    -> média simples entre as duas classes
 TIPO_MEDIA = 'weighted avg'
 
-# Métrica usada para ordenar o ranking (critério de "mais efetivo")
 CRITERIO = 'F1-Score Médio (%)'
 
 METRICAS = ['Acurácia (%)', 'Precisão Média (%)', 'Recall Médio (%)',
@@ -63,10 +54,7 @@ COR_CEL_MELHOR = '#A5D6A7'
 COR_CEL_NORMAL = '#F1F4F8'
 COR_TEXTO = '#1B1B1B'
 
-
-# ==========================================
-# 2. FUNÇÕES AUXILIARES
-# ==========================================
+# -- FUNÇÕES AUXILIARES -- 
 def pct(v, casas=2):
     """96.17 -> '96,17%' (padrão brasileiro)."""
     return f'{v:.{casas}f}%'.replace('.', ',')
@@ -137,7 +125,7 @@ def carregar_validacao():
         image_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         label_mode='categorical',
-        shuffle=True,  # necessário para o split correto (igual ao treino)
+        shuffle=True, 
     )
     class_names = list(val_gen.class_names)
     print(f'Classes encontradas: {class_names}')
@@ -157,9 +145,6 @@ def avaliar_modelo(caminho, val_gen, class_names):
 
     model = load_model(caminho)
 
-    # y_true e y_pred coletados NO MESMO loop: como val_gen tem shuffle=True,
-    # percorrê-lo duas vezes geraria ordens diferentes e os rótulos não
-    # corresponderiam às predições.
     y_true, y_pred = [], []
     for images, labels in val_gen:
         preds = model(images, training=False).numpy()
@@ -173,15 +158,12 @@ def avaliar_modelo(caminho, val_gen, class_names):
 
     resultados = calcular_resultados(y_true, y_pred, class_names)
 
-    # Libera memória antes do próximo modelo
     del model
     tf.keras.backend.clear_session()
     return resultados
 
 
-# ==========================================
-# 3. GRÁFICO: RANKING (PIRULITO) + TABELA DE MÉTRICAS
-# ==========================================
+# -- GRÁFICO: RANKING + TABELA DE MÉTRICAS
 def gerar_grafico(df, caminho_saida):
     n = len(df)
     melhor = df.iloc[0]
@@ -192,7 +174,7 @@ def gerar_grafico(df, caminho_saida):
     ax1 = fig.add_subplot(gs[0])
     ax2 = fig.add_subplot(gs[1])
 
-    # ---------- Painel esquerdo: ranking (pirulito) ----------
+    # -- Painel esquerdo: ranking --
     valores = df[CRITERIO].values
     xmin = max(0, 5 * math.floor((valores.min() - 3) / 5))
     ys = np.arange(n)[::-1]  # 1º lugar no topo
@@ -226,7 +208,7 @@ def gerar_grafico(df, caminho_saida):
     ax1.set_title(f'Ranking por {nome_criterio}', fontsize=13, weight='bold',
                   pad=14)
 
-    # ---------- Painel direito: tabela com destaque do melhor por coluna ----
+    # -- Painel direito: tabela com destaque do melhor por coluna --
     ncols = len(METRICAS)
     ax2.set_xlim(-1.45, ncols)
     ax2.set_ylim(n, -0.9)
@@ -275,15 +257,13 @@ def gerar_grafico(df, caminho_saida):
     plt.close(fig)
 
 
-# ==========================================
-# 4. EXECUÇÃO PRINCIPAL
-# ==========================================
+# -- EXECUÇÃO PRINCIPAL --
 def main():
     print('=' * 75)
     print('COMPARAÇÃO AUTOMÁTICA DE MODELOS - TCC (detecção de malária)')
     print('=' * 75)
 
-    # 1) Descobre quais modelos já foram treinados (antes de carregar o TF)
+    # Descobre quais modelos já foram treinados
     encontrados = {}
     for nome, arquivo in MODELOS.items():
         caminho = localizar_modelo(arquivo)
@@ -299,10 +279,10 @@ def main():
               'PASTA_MODELOS.')
         sys.exit(1)
 
-    # 2) Carrega o conjunto de validação uma única vez
+    # Carrega o conjunto de validação uma única vez
     val_gen, class_names = carregar_validacao()
 
-    # 3) Avalia cada modelo encontrado
+    # Avalia cada modelo encontrado
     linhas = []
     for nome, caminho in encontrados.items():
         print('\n' + '=' * 75)
@@ -310,7 +290,7 @@ def main():
         print('=' * 75)
         try:
             resultados = avaliar_modelo(caminho, val_gen, class_names)
-        except Exception as erro:  # arquivo corrompido, versão incompatível...
+        except Exception as erro: 
             print(f"[AVISO] Falha ao avaliar '{nome}': {erro}\n"
                   '        Pulando este modelo...')
             continue
@@ -320,7 +300,7 @@ def main():
         print('\n[ERRO] Nenhum modelo pôde ser avaliado.')
         sys.exit(1)
 
-    # 4) Tabela final ordenada pelo critério
+    # Tabela final ordenada pelo critério
     df = pd.DataFrame(linhas)
     df = df.sort_values(CRITERIO, ascending=False).reset_index(drop=True)
 

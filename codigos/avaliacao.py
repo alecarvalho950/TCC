@@ -10,9 +10,7 @@ from matplotlib.patches import Rectangle
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASTA_IMAGENS = os.path.join(BASE_DIR, '../dados/train')
 
-# ==========================================
-# 1. CONFIGURAÇÕES
-# ==========================================
+# -- CONFIGURAÇÕES --
 LISTA_MODELOS_CAMINHOS = [
     os.path.join(BASE_DIR, 'melhor_modelo_cnn_propria.keras'),
     os.path.join(BASE_DIR, 'melhor_modelo_vgg16.keras'),
@@ -23,7 +21,7 @@ LISTA_MODELOS_CAMINHOS = [
 IMG_SIZE = (128, 128)
 BATCH_SIZE = 32
 
-# Classe considerada "positiva" (a que queremos detectar)
+# Classe considerada "positiva"
 CLASSE_POSITIVA = 'Parasitized'
 
 # Cores da Matriz de Confusão
@@ -33,14 +31,12 @@ COR_ERRO_CRITICO = '#EF9A9A'
 COR_TEXTO = '#1B1B1B'
 COR_TEXTO_SUAVE = '#555555'
 
-# Cores distintas para cada métrica de desempenho
+# Cores diferentes para cada métrica de desempenho
 CORES_METRICAS = ['#1F5FA8', '#2E7D32', '#8E44AD', '#D35400', '#16A085']
 COR_FUNDO_BARRA = '#EAECEE'
 
 
-# ==========================================
-# 2. FUNÇÕES AUXILIARES DO GRÁFICO
-# ==========================================
+# -- FUNÇÕES AUXILIARES DO GRÁFICO --
 def fmt_int(n):
     """1469 -> '1.469' (padrão brasileiro)."""
     return f'{int(n):,}'.replace(',', '.')
@@ -96,8 +92,6 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
     total = total_pos + total_neg
     m = calcular_metricas(tp, fn, fp, tn)
 
-    # Eixo vertical compartilhado: 0..2 = bloco de dados; valores negativos =
-    # "zona de cabeçalho" acima dele (rótulos das colunas na matriz).
     Y_BASE = 2.0
     Y_TOPO = -0.66
 
@@ -109,7 +103,7 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
     ax_cm = fig.add_subplot(gs[0])
     ax_m = fig.add_subplot(gs[1])
 
-    # ---------- Painel esquerdo: matriz de confusão ----------
+    # -- Painel esquerdo: matriz de confusão --
     celulas = {
         (0, 0): ('Verdadeiro Positivo (VP)', COR_ACERTO, tp, total_pos),
         (0, 1): ('Falso Negativo (FN)', COR_ERRO_CRITICO, fn, total_pos),
@@ -126,7 +120,6 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
         pct_linha = 100.0 * valor / tot_linha if tot_linha > 0 else 0.0
         cx, cy = j + 0.5, i + 0.5
 
-        # Quatro "camadas" com respiro generoso entre elas
         ax_cm.text(cx, cy - 0.34, titulo, ha='center', va='center',
                    fontsize=12.5, weight='bold', color=COR_TEXTO)
         ax_cm.text(cx, cy - 0.06, fmt_int(valor), ha='center', va='center',
@@ -137,8 +130,6 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
                    ha='center', va='center', fontsize=10.5, weight='bold',
                    color='#333333')
 
-    # Cabeçalho das colunas (dentro da zona de cabeçalho, com margem do topo
-    # da matriz): nome da classe em destaque + total real logo abaixo.
     for j, (nome, tot) in enumerate([('Parasitada', total_pos),
                                      ('Não infectada', total_neg)]):
         ax_cm.text(j + 0.5, -0.31, nome, ha='center', va='center',
@@ -155,7 +146,7 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
 
     ax_cm.axis('off')
 
-    # ---------- Painel direito: métricas com barras duplas ----------
+    # -- Painel direito: métricas com barras duplas --
     itens = [
         ('Acurácia', m['acuracia']),
         ('Sensibilidade', m['sensibilidade']),
@@ -164,9 +155,6 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
         ('F1-Score', m['f1']),
     ]
     n_itens = len(itens)
-    # As barras ocupam toda a altura útil do painel: do topo do cabeçalho da
-    # matriz (-0.58) até a base dela (2.0). Assim os dois painéis formam o
-    # mesmo "bloco" visual, com espaçamento regular entre as barras.
     altura = 0.30
     ys = np.linspace(-0.58 + altura / 2, Y_BASE - altura / 2, n_itens)
     valores = [v for _, v in itens]
@@ -174,11 +162,11 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
     ax_m.set_ylim(Y_BASE, Y_TOPO)
     ax_m.set_xlim(0, 117)
 
-    # 1. Barra de fundo (cinza clara) até 100%
+    # Barra de fundo até 100%
     ax_m.barh(ys, [100] * n_itens, color=COR_FUNDO_BARRA, height=altura,
               edgecolor='none')
 
-    # 2. Barra principal por cima; valor sempre APÓS o fim da barra cinza
+    # Barra principal por cima
     for y, v, cor in zip(ys, valores, CORES_METRICAS):
         ax_m.barh(y, v, color=cor, height=altura)
         ax_m.text(103, y, fmt_pct(v), va='center', ha='left', fontsize=13,
@@ -193,12 +181,10 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
 
     for lado in ('top', 'right', 'left'):
         ax_m.spines[lado].set_visible(False)
-    # Eixo X limpo: vai só de 0% a 100% e fica afastado das barras
     ax_m.spines['bottom'].set_bounds(0, 100)
     ax_m.spines['bottom'].set_position(('outward', 16))
     ax_m.spines['bottom'].set_color('#888888')
 
-    # ---------- Títulos (coordenadas da figura, alinhados entre painéis) ----
     p_cm = ax_cm.get_position()
     p_m = ax_m.get_position()
     y_secao = p_cm.y1 + 0.055
@@ -224,9 +210,7 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
     return m
 
 
-# ==========================================
-# 3. AVALIAÇÃO EM LOTE
-# ==========================================
+# -- AVALIAÇÃO EM LOTE --
 def main():
     from sklearn.metrics import classification_report, confusion_matrix
     from tensorflow.keras.models import load_model

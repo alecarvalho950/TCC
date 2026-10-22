@@ -10,26 +10,20 @@ from tensorflow.keras.utils import image_dataset_from_directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASTA_IMAGENS = os.path.join(BASE_DIR, '../dados/train')
 
-# ==========================================
-# 1. CONFIGURAÇÕES GERAIS
-# ==========================================
+# -- CONFIGURAÇÕES GERAIS --
 IMG_SIZE = (128, 128)
 BATCH_SIZE = 32
-EPOCHS = 2  # Ajuste para o total de épocas desejado por modelo
+EPOCHS = 2
 
-# Lista com todos os modelos que serão treinados em sequência automática
-# LISTA_MODELOS = ['cnn_propria', 'vgg16', 'resnet50', 'efficientnet']
-LISTA_MODELOS = ['cnn_propria', 'vgg16']
+LISTA_MODELOS = ['cnn_propria', 'vgg16', 'resnet50', 'efficientnet']
 
-# ==========================================
-# 2. CARREGAMENTO DOS DADOS (80% Treino / 20% Validação)
-# ==========================================
+# -- CARREGAMENTO DOS DADOS (80% Treino / 20% Validação) -- 
 print('Carregando conjunto de treino...')
 train_gen = image_dataset_from_directory(
     PASTA_IMAGENS,
     validation_split=0.2,
     subset='training',
-    seed=123,  # Semente fixa para manter a mesma ordem
+    seed=123, 
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
     label_mode='categorical',
@@ -41,7 +35,7 @@ val_gen = image_dataset_from_directory(
     PASTA_IMAGENS,
     validation_split=0.2,
     subset='validation',
-    seed=123,  # Mesma semente do treino!
+    seed=123,
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
     label_mode='categorical',
@@ -52,9 +46,7 @@ val_gen = image_dataset_from_directory(
 train_gen = train_gen.prefetch(buffer_size=tf.data.AUTOTUNE)
 val_gen = val_gen.prefetch(buffer_size=tf.data.AUTOTUNE)
 
-# ==========================================
-# 3. CAMADA DE PRÉ-PROCESSAMENTO & AUGMENTATION
-# ==========================================
+# -- CAMADA DE PRÉ-PROCESSAMENTO & AUGMENTATION --
 data_augmentation = tf.keras.Sequential(
     [
         layers.Rescaling(1.0 / 255),
@@ -73,9 +65,7 @@ data_augmentation_efficientnet = tf.keras.Sequential(
 )
 
 
-# ==========================================
-# 4. CONSTRUÇÃO DAS ARQUITETURAS
-# ==========================================
+# -- CONSTRUÇÃO DAS ARQUITETURAS -- 
 def construir_modelo(tipo_modelo, input_shape=(128, 128, 3), num_classes=2):
   inputs = layers.Input(shape=input_shape)
 
@@ -138,9 +128,7 @@ def construir_modelo(tipo_modelo, input_shape=(128, 128, 3), num_classes=2):
   return models.Model(inputs=inputs, outputs=outputs)
 
 
-# ==========================================
-# 5. GRÁFICO DO HISTÓRICO DE TREINAMENTO
-# ==========================================
+# -- GRÁFICO DO HISTÓRICO DE TREINAMENTO --
 COR_TREINO = '#1F5FA8'
 COR_VALID = '#E67E22'
 COR_MELHOR = '#2E7D32'
@@ -159,7 +147,6 @@ def plotar_historico(history, nome_modelo, caminho_saida):
   loss, val_loss = h['loss'], h['val_loss']
   n = len(loss)
   epocas = list(range(1, n + 1))
-  # Mesmo critério do ModelCheckpoint/EarlyStopping (monitor='val_loss')
   melhor = int(np.argmin(val_loss))
   x_melhor = melhor + 1
 
@@ -175,14 +162,12 @@ def plotar_historico(history, nome_modelo, caminho_saida):
             label='Treino')
     ax.plot(epocas, valid, color=COR_VALID, marker='o', ms=tam, lw=2.2,
             label='Validação')
-
-    # Época do modelo salvo (estrela sem rótulo: não entra na legenda)
+    
     ax.axvline(x_melhor, color=COR_MELHOR, ls='--', lw=1.4, alpha=0.8,
                zorder=1)
     ax.scatter([x_melhor], [valid[melhor]], marker='*', s=320,
                color=COR_MELHOR, edgecolor='white', zorder=6)
 
-    # Valores na melhor época (o maior fica acima, o menor abaixo)
     v_cima = valid[melhor] >= treino[melhor]
     for serie, cor, acima in (
         (valid, COR_VALID, v_cima),
@@ -202,12 +187,12 @@ def plotar_historico(history, nome_modelo, caminho_saida):
     else:
       ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_formatter(FuncFormatter(fmt))
-    # Margem vertical com folga mínima (evita eixo "apertado" com 1 época)
+    
     todos = list(treino) + list(valid)
     lo, hi = min(todos), max(todos)
     folga = max((hi - lo) * 0.25, pad_min)
     topo = hi + folga
-    if fmt is fmt_pct:  # acurácia não passa de 100%
+    if fmt is fmt_pct:  
       topo = min(topo, 1.02)
     ax.set_ylim(lo - folga, topo)
     ax.grid(linestyle='--', alpha=0.4)
@@ -215,7 +200,7 @@ def plotar_historico(history, nome_modelo, caminho_saida):
     for lado in ('top', 'right'):
       ax.spines[lado].set_visible(False)
 
-    # Seta verde: sentido de "melhor" (fora da área do gráfico, à direita)
+    # Seta verde: sentido de "melhor" à direita
     y0, y1 = (0.60, 0.95) if maior_melhor else (0.40, 0.05)
     ax.annotate(
         '', xy=(1.03, y1), xytext=(1.03, y0), xycoords='axes fraction',
@@ -232,7 +217,7 @@ def plotar_historico(history, nome_modelo, caminho_saida):
 
   fig.suptitle(f'Histórico de treinamento - {nome_modelo.upper()}',
                fontsize=15, weight='bold', y=0.995)
-  # Legenda superior: apenas Treino e Validação
+
   handles, rotulos = ax1.get_legend_handles_labels()
   fig.legend(handles, rotulos, loc='upper center', ncol=2, fontsize=10.5,
              frameon=False, bbox_to_anchor=(0.5, 0.955))
@@ -256,9 +241,7 @@ def plotar_historico(history, nome_modelo, caminho_saida):
   plt.close(fig)  # Libera memória no loop
 
 
-# ==========================================
-# 6. LOOP DE TREINAMENTO AUTOMATIZADO
-# ==========================================
+# -- LOOP DE TREINAMENTO AUTOMATIZADO --
 for MODELO in LISTA_MODELOS:
   print(f"\n{'='*60}")
   print(f'INICIANDO PIPELINE DO MODELO: {MODELO.upper()}')
