@@ -8,39 +8,50 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.utils import image_dataset_from_directory
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PASTA_IMAGENS = os.path.join(BASE_DIR, '../dados/train')
+PASTA_TREINO = os.path.join(BASE_DIR, '../dados/train')
+PASTA_VALIDACAO = os.path.join(BASE_DIR, '../dados/val')
 
 # -- CONFIGURAÇÕES GERAIS --
 IMG_SIZE = (128, 128)
 BATCH_SIZE = 32
-EPOCHS = 2
+EPOCHS = 20
 
 LISTA_MODELOS = ['cnn_propria', 'vgg16', 'resnet50', 'efficientnet']
 
-# -- CARREGAMENTO DOS DADOS (80% Treino / 20% Validação) -- 
+# -- CARREGAMENTO DOS DADOS (70% Treino / 30% Validação: 15% + 15% por classe) --
+# As pastas dados/train e dados/val são criadas pelo script dividir_dados.py
+for _pasta in (PASTA_TREINO, PASTA_VALIDACAO):
+    if not os.path.isdir(_pasta):
+        raise SystemExit(
+            f'[ERRO] Pasta não encontrada: {_pasta}\n'
+            '       Execute primeiro: python dividir_dados.py --executar'
+        )
+
 print('Carregando conjunto de treino...')
 train_gen = image_dataset_from_directory(
-    PASTA_IMAGENS,
-    validation_split=0.2,
-    subset='training',
-    seed=123, 
+    PASTA_TREINO,
+    seed=123,  # Semente do embaralhamento (ordem reprodutível)
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
     label_mode='categorical',
     shuffle=True,
 )
 
-# Validação: Mantém shuffle=True para garantir o split proporcional correto
+print('Carregando conjunto de validação...')
 val_gen = image_dataset_from_directory(
-    PASTA_IMAGENS,
-    validation_split=0.2,
-    subset='validation',
-    seed=123,
+    PASTA_VALIDACAO,
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
     label_mode='categorical',
-    shuffle=True,
+    shuffle=False,  # Ordem fixa: a validação não precisa ser embaralhada
 )
+
+# Garante que treino e validação usam as mesmas classes na mesma ordem
+if train_gen.class_names != val_gen.class_names:
+    raise SystemExit(
+        f'[ERRO] Classes diferentes entre treino {train_gen.class_names} e '
+        f'validação {val_gen.class_names}. Confira as subpastas.'
+    )
 
 # Otimização de leitura em memória
 train_gen = train_gen.prefetch(buffer_size=tf.data.AUTOTUNE)
@@ -65,67 +76,67 @@ data_augmentation_efficientnet = tf.keras.Sequential(
 )
 
 
-# -- CONSTRUÇÃO DAS ARQUITETURAS -- 
+# -- CONSTRUÇÃO DAS ARQUITETURAS --
 def construir_modelo(tipo_modelo, input_shape=(128, 128, 3), num_classes=2):
-  inputs = layers.Input(shape=input_shape)
+    inputs = layers.Input(shape=input_shape)
 
-  if tipo_modelo == 'cnn_propria':
-    x = data_augmentation(inputs)
-    x = layers.Conv2D(32, (3, 3), activation='relu')(x)
-    x = layers.MaxPooling2D(2, 2)(x)
-    x = layers.Conv2D(64, (3, 3), activation='relu')(x)
-    x = layers.MaxPooling2D(2, 2)(x)
-    x = layers.Conv2D(128, (3, 3), activation='relu')(x)
-    x = layers.MaxPooling2D(2, 2)(x)
-    x = layers.Flatten()(x)
-    x = layers.Dense(128, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    if tipo_modelo == 'cnn_propria':
+        x = data_augmentation(inputs)
+        x = layers.Conv2D(32, (3, 3), activation='relu')(x)
+        x = layers.MaxPooling2D(2, 2)(x)
+        x = layers.Conv2D(64, (3, 3), activation='relu')(x)
+        x = layers.MaxPooling2D(2, 2)(x)
+        x = layers.Conv2D(128, (3, 3), activation='relu')(x)
+        x = layers.MaxPooling2D(2, 2)(x)
+        x = layers.Flatten()(x)
+        x = layers.Dense(128, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        outputs = layers.Dense(num_classes, activation='softmax')(x)
 
-  elif tipo_modelo == 'vgg16':
-    x = data_augmentation(inputs)
-    base_model = applications.VGG16(
-        weights='imagenet', include_top=False, input_shape=input_shape
-    )
-    base_model.trainable = False
-    x = base_model(x)
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(128, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    elif tipo_modelo == 'vgg16':
+        x = data_augmentation(inputs)
+        base_model = applications.VGG16(
+            weights='imagenet', include_top=False, input_shape=input_shape
+        )
+        base_model.trainable = False
+        x = base_model(x)
+        x = layers.GlobalAveragePooling2D()(x)
+        x = layers.Dense(128, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        outputs = layers.Dense(num_classes, activation='softmax')(x)
 
-  elif tipo_modelo == 'resnet50':
-    x = data_augmentation(inputs)
-    base_model = applications.ResNet50(
-        weights='imagenet', include_top=False, input_shape=input_shape
-    )
-    base_model.trainable = False
-    x = base_model(x)
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(128, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    elif tipo_modelo == 'resnet50':
+        x = data_augmentation(inputs)
+        base_model = applications.ResNet50(
+            weights='imagenet', include_top=False, input_shape=input_shape
+        )
+        base_model.trainable = False
+        x = base_model(x)
+        x = layers.GlobalAveragePooling2D()(x)
+        x = layers.Dense(128, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        outputs = layers.Dense(num_classes, activation='softmax')(x)
 
-  elif tipo_modelo == 'efficientnet':
-    # EfficientNet exige pixels de 0 a 255 (sem Rescaling)
-    x = data_augmentation_efficientnet(inputs)
-    base_model = applications.EfficientNetB0(
-        weights='imagenet', include_top=False, input_shape=input_shape
-    )
-    base_model.trainable = False
-    x = base_model(x)
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(128, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    elif tipo_modelo == 'efficientnet':
+        # EfficientNet exige pixels de 0 a 255 (sem Rescaling)
+        x = data_augmentation_efficientnet(inputs)
+        base_model = applications.EfficientNetB0(
+            weights='imagenet', include_top=False, input_shape=input_shape
+        )
+        base_model.trainable = False
+        x = base_model(x)
+        x = layers.GlobalAveragePooling2D()(x)
+        x = layers.Dense(128, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        outputs = layers.Dense(num_classes, activation='softmax')(x)
 
-  else:
-    raise ValueError(
-        "Modelo não reconhecido! Escolha 'cnn_propria', 'vgg16', 'resnet50' ou"
-        " 'efficientnet'."
-    )
+    else:
+        raise ValueError(
+            "Modelo não reconhecido! Escolha 'cnn_propria', 'vgg16', 'resnet50' ou"
+            " 'efficientnet'."
+        )
 
-  return models.Model(inputs=inputs, outputs=outputs)
+    return models.Model(inputs=inputs, outputs=outputs)
 
 
 # -- GRÁFICO DO HISTÓRICO DE TREINAMENTO --
@@ -135,156 +146,156 @@ COR_MELHOR = '#2E7D32'
 
 
 def plotar_historico(history, nome_modelo, caminho_saida):
-  """Gráfico de acurácia e perda (treino x validação) fácil de interpretar.
+    """Gráfico de acurácia e perda (treino x validação) fácil de interpretar.
 
-  - Marcadores em cada época (aparece mesmo com 1 época).
-  - Seta verde indicando o sentido de "melhor" em cada gráfico.
-  - Estrela na época do modelo salvo (menor perda de validação).
-  - Resumo com os valores finais no rodapé.
-  """
-  h = history.history
-  acc, val_acc = h['accuracy'], h['val_accuracy']
-  loss, val_loss = h['loss'], h['val_loss']
-  n = len(loss)
-  epocas = list(range(1, n + 1))
-  melhor = int(np.argmin(val_loss))
-  x_melhor = melhor + 1
+    - Marcadores em cada época (aparece mesmo com 1 época).
+    - Seta verde indicando o sentido de "melhor" em cada gráfico.
+    - Estrela na época do modelo salvo (menor perda de validação).
+    - Resumo com os valores finais no rodapé.
+    """
+    h = history.history
+    acc, val_acc = h['accuracy'], h['val_accuracy']
+    loss, val_loss = h['loss'], h['val_loss']
+    n = len(loss)
+    epocas = list(range(1, n + 1))
+    melhor = int(np.argmin(val_loss))
+    x_melhor = melhor + 1
 
-  def fmt_pct(v, _=None):
-    return f'{v * 100:.1f}%'.replace('.', ',')
+    def fmt_pct(v, _=None):
+        return f'{v * 100:.1f}%'.replace('.', ',')
 
-  def fmt_loss(v, _=None):
-    return f'{v:.2f}'.replace('.', ',')
+    def fmt_loss(v, _=None):
+        return f'{v:.2f}'.replace('.', ',')
 
-  def desenhar(ax, treino, valid, titulo, maior_melhor, fmt, pad_min):
-    tam = 9 if n <= 3 else 5
-    ax.plot(epocas, treino, color=COR_TREINO, marker='o', ms=tam, lw=2.2,
-            label='Treino')
-    ax.plot(epocas, valid, color=COR_VALID, marker='o', ms=tam, lw=2.2,
-            label='Validação')
-    
-    ax.axvline(x_melhor, color=COR_MELHOR, ls='--', lw=1.4, alpha=0.8,
-               zorder=1)
-    ax.scatter([x_melhor], [valid[melhor]], marker='*', s=320,
-               color=COR_MELHOR, edgecolor='white', zorder=6)
+    def desenhar(ax, treino, valid, titulo, maior_melhor, fmt, pad_min):
+        tam = 9 if n <= 3 else 5
+        ax.plot(epocas, treino, color=COR_TREINO, marker='o', ms=tam, lw=2.2,
+                label='Treino')
+        ax.plot(epocas, valid, color=COR_VALID, marker='o', ms=tam, lw=2.2,
+                label='Validação')
 
-    v_cima = valid[melhor] >= treino[melhor]
-    for serie, cor, acima in (
-        (valid, COR_VALID, v_cima),
-        (treino, COR_TREINO, not v_cima),
-    ):
-      ax.annotate(
-          fmt(serie[melhor]), (x_melhor, serie[melhor]),
-          xytext=(0, 13 if acima else -19), textcoords='offset points',
-          ha='center', fontsize=10.5, weight='bold', color=cor,
-      )
+        ax.axvline(x_melhor, color=COR_MELHOR, ls='--', lw=1.4, alpha=0.8,
+                   zorder=1)
+        ax.scatter([x_melhor], [valid[melhor]], marker='*', s=320,
+                   color=COR_MELHOR, edgecolor='white', zorder=6)
 
-    ax.set_title(titulo, fontsize=13, weight='bold', pad=12)
-    ax.set_xlabel('Época', fontsize=11)
-    ax.set_xlim(0.5, n + 0.5)
-    if n <= 20:
-      ax.set_xticks(epocas)
-    else:
-      ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.yaxis.set_major_formatter(FuncFormatter(fmt))
-    
-    todos = list(treino) + list(valid)
-    lo, hi = min(todos), max(todos)
-    folga = max((hi - lo) * 0.25, pad_min)
-    topo = hi + folga
-    if fmt is fmt_pct:  
-      topo = min(topo, 1.02)
-    ax.set_ylim(lo - folga, topo)
-    ax.grid(linestyle='--', alpha=0.4)
-    ax.set_axisbelow(True)
-    for lado in ('top', 'right'):
-      ax.spines[lado].set_visible(False)
+        v_cima = valid[melhor] >= treino[melhor]
+        for serie, cor, acima in (
+                (valid, COR_VALID, v_cima),
+                (treino, COR_TREINO, not v_cima),
+        ):
+            ax.annotate(
+                fmt(serie[melhor]), (x_melhor, serie[melhor]),
+                xytext=(0, 13 if acima else -19), textcoords='offset points',
+                ha='center', fontsize=10.5, weight='bold', color=cor,
+            )
 
-    # Seta verde: sentido de "melhor" à direita
-    y0, y1 = (0.60, 0.95) if maior_melhor else (0.40, 0.05)
-    ax.annotate(
-        '', xy=(1.03, y1), xytext=(1.03, y0), xycoords='axes fraction',
-        arrowprops=dict(arrowstyle='-|>', color=COR_MELHOR, lw=2.5),
-        annotation_clip=False,
+        ax.set_title(titulo, fontsize=13, weight='bold', pad=12)
+        ax.set_xlabel('Época', fontsize=11)
+        ax.set_xlim(0.5, n + 0.5)
+        if n <= 20:
+            ax.set_xticks(epocas)
+        else:
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.yaxis.set_major_formatter(FuncFormatter(fmt))
+
+        todos = list(treino) + list(valid)
+        lo, hi = min(todos), max(todos)
+        folga = max((hi - lo) * 0.25, pad_min)
+        topo = hi + folga
+        if fmt is fmt_pct:
+            topo = min(topo, 1.02)
+        ax.set_ylim(lo - folga, topo)
+        ax.grid(linestyle='--', alpha=0.4)
+        ax.set_axisbelow(True)
+        for lado in ('top', 'right'):
+            ax.spines[lado].set_visible(False)
+
+        # Seta verde: sentido de "melhor" à direita
+        y0, y1 = (0.60, 0.95) if maior_melhor else (0.40, 0.05)
+        ax.annotate(
+            '', xy=(1.03, y1), xytext=(1.03, y0), xycoords='axes fraction',
+            arrowprops=dict(arrowstyle='-|>', color=COR_MELHOR, lw=2.5),
+            annotation_clip=False,
+        )
+        ax.text(1.065, (y0 + y1) / 2, 'melhor', transform=ax.transAxes,
+                rotation=90, va='center', ha='center', fontsize=10,
+                weight='bold', color=COR_MELHOR)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6.2))
+    desenhar(ax1, acc, val_acc, 'Acurácia', True, fmt_pct, 0.03)
+    desenhar(ax2, loss, val_loss, 'Perda / Loss', False, fmt_loss, 0.08)
+
+    fig.suptitle(f'Histórico de treinamento - {nome_modelo.upper()}',
+                 fontsize=15, weight='bold', y=0.995)
+
+    handles, rotulos = ax1.get_legend_handles_labels()
+    fig.legend(handles, rotulos, loc='upper center', ncol=2, fontsize=10.5,
+               frameon=False, bbox_to_anchor=(0.5, 0.955))
+
+    resumo = (
+        f'Modelo salvo na época {x_melhor} de {n} (menor perda de validação)   |'
+        f'   Acurácia: treino {fmt_pct(acc[melhor])}, validação '
+        f'{fmt_pct(val_acc[melhor])}   |   Perda: treino '
+        f'{fmt_loss(loss[melhor])}, validação {fmt_loss(val_loss[melhor])}'
     )
-    ax.text(1.065, (y0 + y1) / 2, 'melhor', transform=ax.transAxes,
-            rotation=90, va='center', ha='center', fontsize=10,
-            weight='bold', color=COR_MELHOR)
+    if n == 1:
+        resumo += ('\nTreinamento com apenas 1 época: aumente EPOCHS para ver a '
+                   'evolução ao longo do tempo.')
+    fig.text(0.5, 0.01, resumo, ha='center', va='bottom', fontsize=10,
+             bbox=dict(boxstyle='round,pad=0.6', facecolor='#f8f9fa',
+                       edgecolor='#cccccc'))
 
-  fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6.2))
-  desenhar(ax1, acc, val_acc, 'Acurácia', True, fmt_pct, 0.03)
-  desenhar(ax2, loss, val_loss, 'Perda / Loss', False, fmt_loss, 0.08)
-
-  fig.suptitle(f'Histórico de treinamento - {nome_modelo.upper()}',
-               fontsize=15, weight='bold', y=0.995)
-
-  handles, rotulos = ax1.get_legend_handles_labels()
-  fig.legend(handles, rotulos, loc='upper center', ncol=2, fontsize=10.5,
-             frameon=False, bbox_to_anchor=(0.5, 0.955))
-
-  resumo = (
-      f'Modelo salvo na época {x_melhor} de {n} (menor perda de validação)   |'
-      f'   Acurácia: treino {fmt_pct(acc[melhor])}, validação '
-      f'{fmt_pct(val_acc[melhor])}   |   Perda: treino '
-      f'{fmt_loss(loss[melhor])}, validação {fmt_loss(val_loss[melhor])}'
-  )
-  if n == 1:
-    resumo += ('\nTreinamento com apenas 1 época: aumente EPOCHS para ver a '
-               'evolução ao longo do tempo.')
-  fig.text(0.5, 0.01, resumo, ha='center', va='bottom', fontsize=10,
-           bbox=dict(boxstyle='round,pad=0.6', facecolor='#f8f9fa',
-                     edgecolor='#cccccc'))
-
-  fig.tight_layout(rect=(0, 0.1, 0.97, 0.9))
-  fig.savefig(caminho_saida, dpi=200, bbox_inches='tight', pad_inches=0.3,
-              facecolor='white')
-  plt.close(fig)  # Libera memória no loop
+    fig.tight_layout(rect=(0, 0.1, 0.97, 0.9))
+    fig.savefig(caminho_saida, dpi=200, bbox_inches='tight', pad_inches=0.3,
+                facecolor='white')
+    plt.close(fig)  # Libera memória no loop
 
 
 # -- LOOP DE TREINAMENTO AUTOMATIZADO --
 for MODELO in LISTA_MODELOS:
-  print(f"\n{'='*60}")
-  print(f'INICIANDO PIPELINE DO MODELO: {MODELO.upper()}')
-  print(f"{'='*60}")
+    print(f"\n{'=' * 60}")
+    print(f'INICIANDO PIPELINE DO MODELO: {MODELO.upper()}')
+    print(f"{'=' * 60}")
 
-  model = construir_modelo(
-      MODELO, input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), num_classes=2
-  )
+    model = construir_modelo(
+        MODELO, input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), num_classes=2
+    )
 
-  model.compile(
-      optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-      loss='categorical_crossentropy',
-      metrics=[
-          'accuracy',
-          tf.keras.metrics.Precision(name='precision'),
-          tf.keras.metrics.Recall(name='recall'),
-      ],
-  )
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+        loss='categorical_crossentropy',
+        metrics=[
+            'accuracy',
+            tf.keras.metrics.Precision(name='precision'),
+            tf.keras.metrics.Recall(name='recall'),
+        ],
+    )
 
-  callbacks = [
-      EarlyStopping(
-          monitor='val_loss', patience=5, restore_best_weights=True, verbose=1
-      ),
-      ModelCheckpoint(
-          filepath=os.path.join(BASE_DIR, f'melhor_modelo_{MODELO}.keras'),
-          monitor='val_loss',
-          save_best_only=True,
-          verbose=1,
-      ),
-  ]
+    callbacks = [
+        EarlyStopping(
+            monitor='val_loss', patience=5, restore_best_weights=True, verbose=1
+        ),
+        ModelCheckpoint(
+            filepath=os.path.join(BASE_DIR, f'melhor_modelo_{MODELO}.keras'),
+            monitor='val_loss',
+            save_best_only=True,
+            verbose=1,
+        ),
+    ]
 
-  print(f'\nIniciando treinamento do modelo: {MODELO.upper()}...')
-  history = model.fit(
-      train_gen, validation_data=val_gen, epochs=EPOCHS, callbacks=callbacks
-  )
+    print(f'\nIniciando treinamento do modelo: {MODELO.upper()}...')
+    history = model.fit(
+        train_gen, validation_data=val_gen, epochs=EPOCHS, callbacks=callbacks
+    )
 
-  # Gráfico de desempenho individual salvo para cada arquitetura
-  plotar_historico(
-      history, MODELO, os.path.join(BASE_DIR, f'grafico_{MODELO}.png')
-  )
+    # Gráfico de desempenho individual salvo para cada arquitetura
+    plotar_historico(
+        history, MODELO, os.path.join(BASE_DIR, f'grafico_{MODELO}.png')
+    )
 
-  print(f'\nTreinamento de {MODELO} concluído e modelo salvo com sucesso!')
+    print(f'\nTreinamento de {MODELO} concluído e modelo salvo com sucesso!')
 
-print(f"\n{'='*60}")
+print(f"\n{'=' * 60}")
 print('TODOS OS MODELOS FORAM TREINADOS E SALVOS COM SUCESSO!')
-print(f"{'='*60}")
+print(f"{'=' * 60}")

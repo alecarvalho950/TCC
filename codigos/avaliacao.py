@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib.patches import Rectangle
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PASTA_IMAGENS = os.path.join(BASE_DIR, '../dados/train')
+PASTA_VALIDACAO = os.path.join(BASE_DIR, '../dados/val')
 
 # -- CONFIGURAÇÕES --
 LISTA_MODELOS_CAMINHOS = [
@@ -216,16 +216,18 @@ def main():
     from tensorflow.keras.models import load_model
     from tensorflow.keras.utils import image_dataset_from_directory
 
-    print('Carregando conjunto de validação padronizado...')
+    if not os.path.isdir(PASTA_VALIDACAO):
+        print(f'\n[ERRO] Pasta de validação não encontrada: {PASTA_VALIDACAO}')
+        print('       Execute primeiro: python dividir_dados.py --executar')
+        raise SystemExit(1)
+
+    print('Carregando conjunto de validação (dados/val)...')
     val_gen = image_dataset_from_directory(
-        PASTA_IMAGENS,
-        validation_split=0.2,
-        subset='validation',
-        seed=123,
+        PASTA_VALIDACAO,
         image_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         label_mode='categorical',
-        shuffle=True,
+        shuffle=False,  # Ordem fixa e determinística
     )
     class_names = val_gen.class_names
     print(f'Classes encontradas: {class_names}')

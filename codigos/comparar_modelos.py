@@ -8,11 +8,11 @@ import pandas as pd
 from matplotlib.patches import Rectangle
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PASTA_IMAGENS = os.path.join(BASE_DIR, '../dados/train')
+PASTA_VALIDACAO = os.path.join(BASE_DIR, '../dados/val')
 
 # -- CONFIGURAÇÕES --
 
-PASTA_MODELOS = BASE_DIR # Mesma pasta de imagens usada no treinamento.py / avaliacao.py
+PASTA_MODELOS = BASE_DIR  # Pasta onde estão os arquivos .keras
 
 # Nome exibido no gráfico
 MODELOS = {
@@ -24,8 +24,6 @@ MODELOS = {
 
 IMG_SIZE = (128, 128)
 BATCH_SIZE = 32
-SEED = 123
-VALIDATION_SPLIT = 0.2
 
 # Classe considerada "positiva"
 CLASSE_POSITIVA = 'Parasitized'
@@ -54,7 +52,7 @@ COR_CEL_MELHOR = '#A5D6A7'
 COR_CEL_NORMAL = '#F1F4F8'
 COR_TEXTO = '#1B1B1B'
 
-# -- FUNÇÕES AUXILIARES -- 
+# -- FUNÇÕES AUXILIARES --
 def pct(v, casas=2):
     """96.17 -> '96,17%' (padrão brasileiro)."""
     return f'{v:.{casas}f}%'.replace('.', ',')
@@ -107,25 +105,22 @@ def calcular_resultados(y_true, y_pred, class_names):
 
 
 def carregar_validacao():
-    """Carrega o conjunto de validação (mesma seed/proporção do treino)."""
+    """Carrega o conjunto de validação a partir de dados/val (sem embaralhar)."""
     from tensorflow.keras.utils import image_dataset_from_directory
 
-    if not os.path.isdir(PASTA_IMAGENS):
-        print(f'\n[ERRO] Pasta de imagens não encontrada:\n       {PASTA_IMAGENS}')
-        print('       Ajuste a variável PASTA_IMAGENS no início do script.')
+    if not os.path.isdir(PASTA_VALIDACAO):
+        print(f'\n[ERRO] Pasta de validação não encontrada:\n       {PASTA_VALIDACAO}')
+        print('       Execute primeiro: python dividir_dados.py --executar')
+        print('       (ou ajuste a variável PASTA_VALIDACAO no início do script).')
         sys.exit(1)
 
-    print('Carregando conjunto de validação padronizado '
-          f'(seed={SEED}, split={VALIDATION_SPLIT})...')
+    print('Carregando conjunto de validação (dados/val)...')
     val_gen = image_dataset_from_directory(
-        PASTA_IMAGENS,
-        validation_split=VALIDATION_SPLIT,
-        subset='validation',
-        seed=SEED,
+        PASTA_VALIDACAO,
         image_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         label_mode='categorical',
-        shuffle=True, 
+        shuffle=False,  # Ordem fixa e determinística
     )
     class_names = list(val_gen.class_names)
     print(f'Classes encontradas: {class_names}')
