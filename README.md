@@ -5,9 +5,13 @@ microscópicas de células sanguíneas como parasitadas ou não parasitadas e
 comparar o desempenho de diferentes arquiteturas de redes neurais
 convolucionais.
 
+## Status do Projeto
+
+Os scripts necessários para treinamento, avaliação e comparação das arquiteturas encontram-se implementados. A execução experimental definitiva, com o treinamento completo dos modelos e a consolidação dos resultados, está em andamento. Os gráficos, métricas e tabelas finais serão incorporados ao repositório após a conclusão dessa etapa.
+
 ## Visão Geral do Projeto
 
-O projeto realiza uma análise comparativa de quatro arquiteturas:
+O projeto foi estruturado para realizar uma análise comparativa de quatro arquiteturas:
 
 - **CNN Própria** — arquitetura convolucional desenvolvida para este estudo.
 - **VGG16** — arquitetura pré-treinada usada na classificação das imagens.
@@ -21,12 +25,10 @@ métricas em uma tabela e um gráfico de ranking.
 
 ## Obter o Repositório
 
-Clone o projeto e entre na pasta criada:
-
 ```bash
-git clone https://github.com/alecarvalho950/TCC.git
+git clone https://github.com/angelakretschmann/TCC-eng-software.git
 
-cd estudos-imagens-celulares
+cd TCC-eng-software
 ```
 
 ## Estrutura de Pastas Esperada
@@ -186,6 +188,13 @@ largura e resolução para equilibrar desempenho e custo computacional.
 - **Autores:** Mingxing Tan e Quoc V. Le (ICML 2019)
 - **Artigo original:** [Acessar no PMLR](https://proceedings.mlr.press/v97/tan19a.html?ref=ji)
 
+
 ## Autores
 
-Alejandro Carvalho, Ângela Kretschmann, Giliard Gomes Martins e Gian Brustolin.
+- Alejandro Carvalho
+- Ângela Kretschmann
+- Giliard Gomes Martins
+
+## Orientador
+
+- Prof. Gian Brustolin
