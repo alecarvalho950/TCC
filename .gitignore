@@ -4,7 +4,6 @@
 
 # Modelos treinados e resultados gerados
 /codigos/*.keras
-/codigos/grafico_*.png
 /codigos/matriz_confusao_*.png
 /codigos/tabela_comparativa_modelos.csv
 
