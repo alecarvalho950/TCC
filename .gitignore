@@ -10,3 +10,5 @@
 /.idea/
 __pycache__/
 *.py[cod]
+# Novas rodadas: dados, pesos, metadados/predições potencialmente identificáveis
+/codigos/resultados/

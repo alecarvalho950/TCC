@@ -8,19 +8,11 @@ import numpy as np
 from matplotlib.patches import Rectangle
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PASTA_VALIDACAO = os.path.join(BASE_DIR, '../dados/val')
+from protocolo import (CLASSES, argumentos_avaliacao, carregar_conjunto,
+                       conferir_modelo, predizer, salvar_predicoes)
+from comparar_modelos import MODELOS
 
 # -- CONFIGURAÇÕES --
-LISTA_MODELOS_CAMINHOS = [
-    os.path.join(BASE_DIR, 'melhor_modelo_cnn_propria.keras'),
-    os.path.join(BASE_DIR, 'melhor_modelo_vgg16.keras'),
-    os.path.join(BASE_DIR, 'melhor_modelo_resnet50.keras'),
-    os.path.join(BASE_DIR, 'melhor_modelo_efficientnet.keras'),
-]
-
-IMG_SIZE = (128, 128)
-BATCH_SIZE = 32
-
 # Classe considerada "positiva"
 CLASSE_POSITIVA = 'Parasitized'
 
@@ -71,7 +63,7 @@ def calcular_metricas(tp, fn, fp, tn):
     }
 
 
-def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
+def gerar_grafico(cm, class_names, nome_modelo, caminho_saida, conjunto='test'):
     """Gera figura com a matriz de confusão (esq.) e barras de métricas (dir.).
 
     Os dois painéis compartilham a mesma caixa (mesmo topo e mesma base) e o
@@ -134,7 +126,7 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
                                      ('Não infectada', total_neg)]):
         ax_cm.text(j + 0.5, -0.31, nome, ha='center', va='center',
                    fontsize=14, weight='bold', color=COR_TEXTO)
-        ax_cm.text(j + 0.5, -0.14, f'(real: {fmt_int(tot)} imagens)',
+        ax_cm.text(j + 0.5, -0.14, 'classe prevista',
                    ha='center', va='center', fontsize=11,
                    color=COR_TEXTO_SUAVE)
 
@@ -144,6 +136,9 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
     ax_cm.text(1.0, -0.56, 'O QUE O MODELO PREVIU', ha='center', va='center',
                fontsize=11, weight='bold', color=COR_TEXTO_SUAVE)
 
+    for i, nome in enumerate(('Parasitada', 'Não infectada')):
+        ax_cm.text(-0.04, i + 0.5, f'Real: {nome}', rotation=90,
+                   ha='right', va='center', fontsize=11)
     ax_cm.axis('off')
 
     # -- Painel direito: métricas com barras duplas --
@@ -151,8 +146,8 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
         ('Acurácia', m['acuracia']),
         ('Sensibilidade', m['sensibilidade']),
         ('Especificidade', m['especificidade']),
-        ('Precisão', m['precisao']),
-        ('F1-Score', m['f1']),
+        ('Precisão (positiva)', m['precisao']),
+        ('F1 (positiva)', m['f1']),
     ]
     n_itens = len(itens)
     altura = 0.30
@@ -201,7 +196,8 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
              ha='center', va='top', fontsize=18, weight='bold',
              color=COR_TEXTO)
     fig.text(0.5, 0.915,
-             f'(conjunto de validação: {fmt_int(total)} imagens)',
+             f'({conjunto}: {fmt_int(total)} imagens; positivo: Parasitized)'
+             + (' — PRELIMINAR' if conjunto == 'val' else ''),
              ha='center', va='top', fontsize=13, color=COR_TEXTO_SUAVE)
 
     fig.savefig(caminho_saida, dpi=300, bbox_inches='tight', pad_inches=0.4,
@@ -212,69 +208,29 @@ def gerar_grafico(cm, class_names, nome_modelo, caminho_saida):
 
 # -- AVALIAÇÃO EM LOTE --
 def main():
+    import json
     from sklearn.metrics import classification_report, confusion_matrix
-    from tensorflow.keras.models import load_model
-    from tensorflow.keras.utils import image_dataset_from_directory
-
-    if not os.path.isdir(PASTA_VALIDACAO):
-        print(f'\n[ERRO] Pasta de validação não encontrada: {PASTA_VALIDACAO}')
-        print('       Execute primeiro: python dividir_dados.py --executar')
-        raise SystemExit(1)
-
-    print('Carregando conjunto de validação (dados/val)...')
-    val_gen = image_dataset_from_directory(
-        PASTA_VALIDACAO,
-        image_size=IMG_SIZE,
-        batch_size=BATCH_SIZE,
-        label_mode='categorical',
-        shuffle=False,  # Ordem fixa e determinística
-    )
-    class_names = val_gen.class_names
-    print(f'Classes encontradas: {class_names}')
-
-    for model_path in LISTA_MODELOS_CAMINHOS:
-        if not os.path.exists(model_path):
-            print(f"\n[AVISO] Arquivo '{model_path}' não encontrado. Pulando...")
-            continue
-
-        nome_modelo = (
-            os.path.basename(model_path)
-            .replace('melhor_modelo_', '')
-            .replace('.keras', '')
-            .replace('.h5', '')
-            .upper()
-        )
-        print('\n' + '=' * 60)
-        print(f'Avaliando modelo: [{nome_modelo}]')
-        print('=' * 60)
-
-        model = load_model(model_path)
-
-        y_true, y_pred = [], []
-        for images, labels in val_gen:
-            preds = model.predict(images, verbose=0)
-            y_true.extend(np.argmax(labels.numpy(), axis=1))
-            y_pred.extend(np.argmax(preds, axis=1))
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
-
-        print(f'\n--- RELATÓRIO DE AVALIAÇÃO: {nome_modelo} ---')
-        print(classification_report(y_true, y_pred, target_names=class_names,
-                                    digits=4))
-
-        cm = confusion_matrix(y_true, y_pred)
-        print('--- MATRIZ DE CONFUSÃO BRUTA ---')
-        print(cm)
-
-        nome_img = f'matriz_confusao_{nome_modelo.lower()}.png'
-        gerar_grafico(
-            cm, class_names, nome_modelo, os.path.join(BASE_DIR, nome_img)
-        )
-        print(f'\nGráfico salvo em: {nome_img}')
-
-    print('\n' + '=' * 60)
-    print('TODAS AS AVALIAÇÕES FORAM CONCLUÍDAS COM SUCESSO!')
-    print('=' * 60)
+    args = argumentos_avaliacao()
+    caminhos = [args.modelos_dir / arq for arq in MODELOS.values()]
+    for caminho in caminhos:
+        conferir_modelo(caminho, args.manifesto_sha256)
+    conjunto = carregar_conjunto(args.dados, args.conjunto)
+    arquivos = [os.path.relpath(p, args.dados) for p in conjunto.file_paths]
+    for caminho in caminhos:
+        nome = caminho.stem.replace('melhor_modelo_', '')
+        y, pred, prob = predizer(caminho, conjunto)
+        salvar_predicoes(args, nome, caminho, y, pred, prob, arquivos)
+        print(classification_report(y, pred, labels=[0, 1], target_names=CLASSES,
+                                    digits=4, zero_division=0))
+        cm = confusion_matrix(y, pred, labels=[0, 1])
+        (args.saida / f'matriz_confusao_{nome}.json').write_text(
+            json.dumps(dict(classes=CLASSES, linhas='real', colunas='previsto',
+                            conjunto=args.conjunto, matriz=cm.tolist()), indent=2),
+            encoding='utf-8')
+        gerar_grafico(cm, CLASSES, nome.upper(),
+                      args.saida / f'matriz_confusao_{nome}.png', args.conjunto)
+    if args.conjunto == 'val':
+        print('PRELIMINAR: validação usada para selecionar pesos; não é teste.')
 
 
 if __name__ == '__main__':
