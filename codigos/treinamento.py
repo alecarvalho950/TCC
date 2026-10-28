@@ -1,87 +1,41 @@
+import argparse
+import importlib.metadata
+import json
 import os
+import platform
+from pathlib import Path
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 from tensorflow.keras import applications, layers, models
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from tensorflow.keras.utils import image_dataset_from_directory
+from preprocessamento import PreprocessamentoImageNet
+from protocolo import (BATCH_SIZE, CLASSES, DADOS, IMG_SIZE, SAIDA, SEED, VERSAO, carregar_conjunto,
+                       ler_manifesto, sha256)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PASTA_TREINO = os.path.join(BASE_DIR, '../dados/train')
-PASTA_VALIDACAO = os.path.join(BASE_DIR, '../dados/val')
 
 # -- CONFIGURAÇÕES GERAIS --
-IMG_SIZE = (128, 128)
-BATCH_SIZE = 32
 EPOCHS = 20
 
 LISTA_MODELOS = ['cnn_propria', 'vgg16', 'resnet50', 'efficientnet']
 
-# -- CARREGAMENTO DOS DADOS (70% Treino / 30% Validação: 15% + 15% por classe) --
-# As pastas dados/train e dados/val são criadas pelo script dividir_dados.py
-for _pasta in (PASTA_TREINO, PASTA_VALIDACAO):
-    if not os.path.isdir(_pasta):
-        raise SystemExit(
-            f'[ERRO] Pasta não encontrada: {_pasta}\n'
-            '       Execute primeiro: python dividir_dados.py --executar'
-        )
-
-print('Carregando conjunto de treino...')
-train_gen = image_dataset_from_directory(
-    PASTA_TREINO,
-    seed=123,  # Semente do embaralhamento (ordem reprodutível)
-    image_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    label_mode='categorical',
-    shuffle=True,
-)
-
-print('Carregando conjunto de validação...')
-val_gen = image_dataset_from_directory(
-    PASTA_VALIDACAO,
-    image_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    label_mode='categorical',
-    shuffle=False,  # Ordem fixa: a validação não precisa ser embaralhada
-)
-
-# Garante que treino e validação usam as mesmas classes na mesma ordem
-if train_gen.class_names != val_gen.class_names:
-    raise SystemExit(
-        f'[ERRO] Classes diferentes entre treino {train_gen.class_names} e '
-        f'validação {val_gen.class_names}. Confira as subpastas.'
-    )
-
-# Otimização de leitura em memória
-train_gen = train_gen.prefetch(buffer_size=tf.data.AUTOTUNE)
-val_gen = val_gen.prefetch(buffer_size=tf.data.AUTOTUNE)
-
-# -- CAMADA DE PRÉ-PROCESSAMENTO & AUGMENTATION --
-data_augmentation = tf.keras.Sequential(
-    [
-        layers.Rescaling(1.0 / 255),
-        layers.RandomRotation(0.1),
-        layers.RandomFlip('horizontal_and_vertical'),
-    ],
-    name='augmentation',
-)
-
-data_augmentation_efficientnet = tf.keras.Sequential(
-    [
-        layers.RandomRotation(0.1),
-        layers.RandomFlip('horizontal_and_vertical'),
-    ],
-    name='augmentation_efficientnet',
-)
-
-
 # -- CONSTRUÇÃO DAS ARQUITETURAS --
-def construir_modelo(tipo_modelo, input_shape=(128, 128, 3), num_classes=2):
-    inputs = layers.Input(shape=input_shape)
+def construir_modelo(tipo_modelo, input_shape=(128, 128, 3), num_classes=2,
+                     weights='imagenet', seed=SEED):
+    inputs = layers.Input(shape=input_shape, name='rgb_0_255')
+    # Instâncias e sementes novas por modelo; augmentation só atua no treino.
+    augmentation = tf.keras.Sequential([
+        layers.RandomRotation(0.1, seed=seed),
+        layers.RandomFlip('horizontal_and_vertical', seed=seed + 1),
+    ], name='augmentation')
+    x = augmentation(inputs)
 
     if tipo_modelo == 'cnn_propria':
-        x = data_augmentation(inputs)
+        x = layers.Rescaling(1.0 / 255, name='escala_0_1')(x)
         x = layers.Conv2D(32, (3, 3), activation='relu')(x)
         x = layers.MaxPooling2D(2, 2)(x)
         x = layers.Conv2D(64, (3, 3), activation='relu')(x)
@@ -94,24 +48,24 @@ def construir_modelo(tipo_modelo, input_shape=(128, 128, 3), num_classes=2):
         outputs = layers.Dense(num_classes, activation='softmax')(x)
 
     elif tipo_modelo == 'vgg16':
-        x = data_augmentation(inputs)
+        x = PreprocessamentoImageNet('vgg16', name='preprocess_vgg16')(x)
         base_model = applications.VGG16(
-            weights='imagenet', include_top=False, input_shape=input_shape
+            weights=weights, include_top=False, input_shape=input_shape
         )
         base_model.trainable = False
-        x = base_model(x)
+        x = base_model(x, training=False)
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Dense(128, activation='relu')(x)
         x = layers.Dropout(0.5)(x)
         outputs = layers.Dense(num_classes, activation='softmax')(x)
 
     elif tipo_modelo == 'resnet50':
-        x = data_augmentation(inputs)
+        x = PreprocessamentoImageNet('resnet50', name='preprocess_resnet50')(x)
         base_model = applications.ResNet50(
-            weights='imagenet', include_top=False, input_shape=input_shape
+            weights=weights, include_top=False, input_shape=input_shape
         )
         base_model.trainable = False
-        x = base_model(x)
+        x = base_model(x, training=False)
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Dense(128, activation='relu')(x)
         x = layers.Dropout(0.5)(x)
@@ -119,12 +73,11 @@ def construir_modelo(tipo_modelo, input_shape=(128, 128, 3), num_classes=2):
 
     elif tipo_modelo == 'efficientnet':
         # EfficientNet exige pixels de 0 a 255 (sem Rescaling)
-        x = data_augmentation_efficientnet(inputs)
         base_model = applications.EfficientNetB0(
-            weights='imagenet', include_top=False, input_shape=input_shape
+            weights=weights, include_top=False, input_shape=input_shape
         )
         base_model.trainable = False
-        x = base_model(x)
+        x = base_model(x, training=False)
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Dense(128, activation='relu')(x)
         x = layers.Dropout(0.5)(x)
@@ -252,50 +205,63 @@ def plotar_historico(history, nome_modelo, caminho_saida):
     plt.close(fig)  # Libera memória no loop
 
 
-# -- LOOP DE TREINAMENTO AUTOMATIZADO --
-for MODELO in LISTA_MODELOS:
-    print(f"\n{'=' * 60}")
-    print(f'INICIANDO PIPELINE DO MODELO: {MODELO.upper()}')
-    print(f"{'=' * 60}")
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dados', type=Path, default=DADOS)
+    parser.add_argument('--saida', type=Path, default=SAIDA)
+    parser.add_argument('--seed', type=int, default=SEED)
+    parser.add_argument('--epocas', type=int, default=EPOCHS)
+    args = parser.parse_args()
+    if args.epocas < 1:
+        parser.error('--epocas deve ser positivo')
+    manifesto, digest = ler_manifesto(args.dados)
+    if args.saida.exists():
+        parser.error('Pasta de saída já existe; use outra para preservar a rodada.')
+    args.saida.mkdir(parents=True)
+    tf.config.experimental.enable_op_determinism()
+    ambiente = {p: importlib.metadata.version(p) for p in
+                ('keras', 'numpy', 'pandas', 'matplotlib', 'scikit-learn')}
+    ambiente['tensorflow'] = tf.__version__
+    ambiente['python'] = platform.python_version()
+    ambiente['plataforma'] = platform.platform()
+    fontes = {p.name: sha256(p) for p in Path(BASE_DIR).glob('*.py')}
+    for nome in LISTA_MODELOS:
+        tf.keras.backend.clear_session()
+        tf.keras.utils.set_random_seed(args.seed)
+        # Recria o dataset para reiniciar o embaralhamento em cada arquitetura.
+        treino = carregar_conjunto(args.dados, 'train', args.seed).prefetch(tf.data.AUTOTUNE)
+        validacao = carregar_conjunto(args.dados, 'val').prefetch(tf.data.AUTOTUNE)
+        modelo = construir_modelo(nome, seed=args.seed)
+        modelo.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+                       loss='categorical_crossentropy', metrics=['accuracy'])
+        caminho = args.saida / f'melhor_modelo_{nome}.keras'
+        callbacks = [
+            EarlyStopping(monitor='val_loss', mode='min', patience=5,
+                          restore_best_weights=True, verbose=1),
+            ModelCheckpoint(filepath=str(caminho), monitor='val_loss', mode='min',
+                            save_best_only=True, verbose=1),
+        ]
+        historia = modelo.fit(treino, validation_data=validacao,
+                              epochs=args.epocas, callbacks=callbacks)
+        plotar_historico(historia, nome, args.saida / f'grafico_{nome}.png')
+        (args.saida / f'historico_{nome}.json').write_text(
+            json.dumps(historia.history, indent=2), encoding='utf-8')
+        meta = dict(protocolo=VERSAO, modelo=nome, classes=CLASSES,
+                    manifesto_sha256=digest, modelo_sha256=sha256(caminho),
+                    unidade=manifesto['unidade'], seed=args.seed,
+                    image_size=IMG_SIZE, batch_size=BATCH_SIZE,
+                    epocas_maximas=args.epocas,
+                    melhor_epoca=int(np.argmin(historia.history['val_loss'])) + 1,
+                    criterio='min val_loss', patience=5, learning_rate=1e-4,
+                    transferencia='base ImageNet congelada' if nome != 'cnn_propria'
+                    else 'treinamento integral, inicialização aleatória',
+                    parametros=modelo.count_params(),
+                    parametros_treinaveis=int(sum(np.prod(w.shape) for w in modelo.trainable_weights)),
+                    ambiente=ambiente, fontes_sha256=fontes)
+        caminho.with_suffix('.json').write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
+    print('Rodada concluída. Teste não utilizado no treinamento.')
 
-    model = construir_modelo(
-        MODELO, input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), num_classes=2
-    )
 
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-        loss='categorical_crossentropy',
-        metrics=[
-            'accuracy',
-            tf.keras.metrics.Precision(name='precision'),
-            tf.keras.metrics.Recall(name='recall'),
-        ],
-    )
-
-    callbacks = [
-        EarlyStopping(
-            monitor='val_loss', patience=5, restore_best_weights=True, verbose=1
-        ),
-        ModelCheckpoint(
-            filepath=os.path.join(BASE_DIR, f'melhor_modelo_{MODELO}.keras'),
-            monitor='val_loss',
-            save_best_only=True,
-            verbose=1,
-        ),
-    ]
-
-    print(f'\nIniciando treinamento do modelo: {MODELO.upper()}...')
-    history = model.fit(
-        train_gen, validation_data=val_gen, epochs=EPOCHS, callbacks=callbacks
-    )
-
-    # Gráfico de desempenho individual salvo para cada arquitetura
-    plotar_historico(
-        history, MODELO, os.path.join(BASE_DIR, f'grafico_{MODELO}.png')
-    )
-
-    print(f'\nTreinamento de {MODELO} concluído e modelo salvo com sucesso!')
-
-print(f"\n{'=' * 60}")
-print('TODOS OS MODELOS FORAM TREINADOS E SALVOS COM SUCESSO!')
-print(f"{'=' * 60}")
+if __name__ == '__main__':
+    main()

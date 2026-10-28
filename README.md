@@ -5,59 +5,76 @@ microscópicas de células sanguíneas como parasitadas ou não parasitadas e
 comparar o desempenho de diferentes arquiteturas de redes neurais
 convolucionais.
 
+**Artigo:** [Inteligência artificial na detecção de malária: estudo comparativo de redes neurais convolucionais em imagens de células sanguíneas](docs/artigo_TCC.pdf)
+
 ## Status do Projeto
 
-Os scripts necessários para treinamento, avaliação e comparação das arquiteturas encontram-se implementados. A execução experimental definitiva, com o treinamento completo dos modelos e a consolidação dos resultados, está em andamento. Os gráficos, métricas e tabelas finais serão incorporados ao repositório após a conclusão dessa etapa.
+Há uma rodada **histórica e preliminar**, com 70% das imagens para treino e
+30% para validação. Seus números e gráficos estão preservados abaixo. A
+validação também selecionou a melhor época (`val_loss`): esses números não
+estimam desempenho em teste independente.
+
+A [auditoria técnica da PR #2](docs/auditoria_PR2.md) confirmou que VGG16 e
+ResNet50 receberam pré-processamento incompatível com seus pesos ImageNet.
+O código foi corrigido, mas **ainda não há métricas da rodada corrigida**.
+Não está demonstrado quanto esse erro contribuiu para os 63,93% da ResNet50.
 
 ## Visão Geral do Projeto
 
-O projeto foi estruturado para realizar uma análise comparativa de quatro arquiteturas:
+- **CNN Própria:** treinamento integral, inicialização aleatória.
+- **VGG16, ResNet50 e EfficientNetB0:** extração de características com bases
+  ImageNet congeladas e cabeças classificadoras treináveis; sem fine-tuning.
 
-- **CNN Própria** — arquitetura convolucional desenvolvida para este estudo.
-- **VGG16** — arquitetura pré-treinada usada na classificação das imagens.
-- **ResNet50** — arquitetura residual pré-treinada.
-- **EfficientNet** — arquitetura eficiente pré-treinada.
+Manter 128 × 128 pixels, lote 32, Adam com taxa 0,0001, no máximo 20 épocas e
+parada antecipada comum não torna os modelos equivalentes: têm pré-treinamento,
+capacidades e números de parâmetros treináveis distintos. A comparação é entre
+**essas configurações**, não uma prova de superioridade intrínseca das arquiteturas.
+128 × 128 é uma resolução experimental comum, não a resolução padrão 224 × 224
+do pré-treinamento; não é, por si só, uma entrada inválida com `include_top=False`.
 
-Os scripts carregam as imagens de treino e separam automaticamente uma parte
-para validação. O treinamento salva os modelos e gráficos de histórico; a
-avaliação gera relatórios e matrizes de confusão; e a comparação consolida as
-métricas em uma tabela e um gráfico de ranking.
+O novo fluxo registra a divisão em manifesto, treina novos modelos e avalia
+**teste por padrão**. A validação serve à seleção dos pesos. Resultados de
+validação podem ser obtidos explicitamente com `--conjunto val`, como preliminares.
 
 ## Obter o Repositório
 
 ```bash
-git clone https://github.com/angelakretschmann/TCC-eng-software.git
+git clone https://github.com/alecarvalho950/TCC.git
 
-cd TCC-eng-software
+cd TCC
 ```
 
-## Estrutura de Pastas Esperada
+## Estrutura de Pastas
 
-Clone o repositório e organize as imagens do dataset conforme a árvore abaixo.
-As pastas `Parasitized` e `Uninfected` devem estar diretamente dentro de
-`dados/train/`.
+O dataset, os pesos e as rodadas geradas não são versionados. Estrutura da
+nova rodada (os gráficos antigos em `codigos/grafico_*.png` são históricos):
 
 ```text
-estudos-imagens-celulares/
+TCC/
 ├── README.md
-├── .gitignore
+├── requirements.txt
+├── docs/
+│   ├── artigo_TCC.pdf              # artigo da rodada histórica; ver auditoria
+│   └── auditoria_PR2.md
+├── tests/
 ├── codigos/
+│   ├── dividir_dados.py
 │   ├── treinamento.py
+│   ├── preprocessamento.py
+│   ├── protocolo.py
 │   ├── avaliacao.py
-│   └── comparar_modelos.py
+│   ├── comparar_modelos.py
+│   └── resultados/corrigido_seed123/  # novos pesos, metadados e saídas
 └── dados/
-    └── train/
-        ├── Parasitized/
-        │   ├── imagem_1.png
-        │   └── ...
-        └── Uninfected/
-            ├── imagem_1.png
-            └── ...
+    ├── originais/
+    │   ├── Parasitized/
+    │   └── Uninfected/
+    └── protocolo_v1/
+        ├── manifesto.json
+        ├── train/                  # ambas as classes
+        ├── val/                    # ambas as classes
+        └── test/                   # ambas as classes
 ```
-
-Os scripts localizam os dados com base no caminho dos próprios arquivos. Assim,
-podem ser executados a partir da raiz do repositório ou de outro diretório,
-desde que a estrutura acima seja mantida.
 
 ## Download do Dataset
 
@@ -69,26 +86,32 @@ Baixe-as na página oficial do Kaggle:
 Depois de baixar e extrair o arquivo:
 
 1. Localize as pastas de classes `Parasitized` e `Uninfected` dentro do dataset.
-2. Copie **somente essas duas pastas** para `dados/train/`.
-3. Confirme que os caminhos ficaram `dados/train/Parasitized/` e
-   `dados/train/Uninfected/`, sem uma pasta intermediária extra.
+2. Copie **somente essas duas pastas** para `dados/originais/`.
+3. Confirme que os caminhos ficaram `dados/originais/Parasitized/` e
+   `dados/originais/Uninfected/`, sem uma pasta intermediária extra.
+
+Se a extração contiver cópias aninhadas de `cell_images`, use apenas uma
+cópia das classes. A nova divisão recusa conteúdos com SHA-256 idêntico,
+inclusive sob nomes diferentes; isso não detecta todas as duplicatas visuais.
 
 No Windows PowerShell, a pasta de destino pode ser criada com:
 
 ```powershell
-New-Item -ItemType Directory -Force dados/train
+New-Item -ItemType Directory -Force dados/originais
 ```
 
 Em macOS ou Linux:
 
 ```bash
-mkdir -p dados/train
+mkdir -p dados/originais
 ```
 
 ## Configuração do Ambiente e Instalação
 
-Abra um terminal na raiz do repositório. Recomenda-se usar uma versão do Python
-compatível com a versão do TensorFlow disponível para o seu sistema operacional.
+Abra um terminal na raiz do repositório. O código corrigido foi verificado com
+Python 3.12 e TensorFlow 2.20 em CPU/Linux. As versões em `requirements.txt`
+referem-se a essa verificação funcional, não ao ambiente desconhecido da rodada
+histórica. Disponibilidade de GPU e instalação podem variar por plataforma.
 
 ### Windows (PowerShell)
 
@@ -118,45 +141,174 @@ source venv/bin/activate
 ### Instalar dependências
 
 Com o ambiente virtual ativado, atualize o `pip` e instale as bibliotecas
-utilizadas pelos scripts:
+listadas no `requirements.txt`:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install tensorflow keras matplotlib numpy pandas seaborn scikit-learn
+python -m pip install -r requirements.txt
 ```
 
 ## Passo a Passo para Execução
 
-Execute os comandos a seguir, na ordem indicada, a partir da raiz do
-repositório. Antes de iniciar, confirme que o ambiente virtual está ativado e
-que o dataset está em `dados/train/`.
+### 1. Criar uma nova divisão sem alterar as pastas históricas
 
-1. **Treinar os modelos em lote.** O script treina CNN Própria, VGG16,
-   ResNet50 e EfficientNet. Os modelos `.keras` e gráficos de histórico são
-   gravados em `codigos/`.
+Use uma cópia limpa e única do dataset em `dados/originais/`. Não redistribua
+`dados/train` e `dados/val` antigos para depois avaliar os pesos antigos: eles
+podem já ter visto as imagens que passariam a ser chamadas de teste.
 
-   ```bash
-   python codigos/treinamento.py
-   ```
+**Preferência: separar por paciente**, com identificadores de origem verificados.
+Forneça um CSV `dados/grupos.csv` com colunas `arquivo,grupo`, uma linha por
+imagem, caminho relativo à origem (com `/`), e o mesmo grupo para todas as
+células do mesmo paciente, inclusive entre classes. Não deduza pacientes apenas
+por semelhança de nomes. O repositório não fornece esse mapeamento.
 
-2. **Avaliar os modelos salvos.** O script imprime os relatórios de avaliação
-   e grava as matrizes de confusão em `codigos/`.
+```bash
+python codigos/dividir_dados.py --origem dados/originais --grupos dados/grupos.csv
+python codigos/dividir_dados.py --origem dados/originais --grupos dados/grupos.csv --executar
+```
 
-   ```bash
-   python codigos/avaliacao.py
-   ```
+A divisão por grupo visa aproximadamente 70/15/15; os percentuais de imagens e
+a proporção das classes podem variar. As contagens reais são exibidas; ambas
+as classes precisam estar presentes em cada partição. O manifesto registra
+caminhos, rótulos, grupos e hashes. O destino deve ser novo; nada é movido da fonte.
 
-3. **Comparar os resultados.** O script gera a tabela consolidada
-   `tabela_comparativa_modelos.csv` e o gráfico de ranking
-   `grafico_comparativo_geral.png`, também em `codigos/`.
+Sem metadados de paciente, pode-se fazer **somente uma divisão exploratória por
+imagem**, estratificada por classe, com cerca de 70/15/15:
 
-   ```bash
-   python codigos/comparar_modelos.py
-   ```
+```bash
+python codigos/dividir_dados.py --origem dados/originais --por-imagem --executar
+```
 
-O treinamento de redes neurais pode levar algum tempo e requer espaço livre em
-disco para os modelos e resultados. Os dados, modelos treinados e arquivos
-gerados estão listados no `.gitignore` e não são enviados ao GitHub.
+Essa opção **não garante independência entre pacientes/lâminas**. Nenhum número
+do novo teste foi calculado. Se o corpus já foi explorado no estudo, esse teste
+interno reservado aos novos pesos não substitui uma confirmação externa em
+pacientes e fontes de aquisição ainda não utilizados.
+
+### 2. Treinar os quatro modelos novamente
+
+```bash
+python codigos/treinamento.py
+```
+
+A entrada de todos os modelos é RGB 0–255. O aumento de dados atua somente no
+treino, antes do pré-processamento específico, incorporado ao modelo salvo:
+
+| Modelo | Entrada efetiva da base |
+|---|---|
+| CNN Própria | RGB dividido por 255 |
+| VGG16 | `vgg16.preprocess_input`: RGB → BGR, subtração das médias ImageNet, sem divisão por 255 |
+| ResNet50 | `resnet50.preprocess_input`: RGB → BGR, subtração das médias ImageNet, sem divisão por 255 |
+| EfficientNetB0 | RGB 0–255; pré-processamento interno da própria base |
+
+Não normalize novamente na avaliação. A camada personalizada é registrada pelo
+módulo `preprocessamento.py`; carregamentos fora dos scripts devem importar esse
+módulo antes de `load_model`. Os `.keras` antigos permanecem históricos e não
+são convertidos em modelos corrigidos apenas por modificar o código.
+
+Cada arquitetura recebe instâncias novas de augmentation e reinicia semente e
+ordem de embaralhamento. As bases ImageNet ficam congeladas e são chamadas com
+`training=False`. Early stopping e checkpoint usam **menor `val_loss`**, paciência
+5; a ordenação comparativa usa **F1 ponderado**. São critérios distintos e explícitos.
+O teste não participa de `fit`, da parada antecipada ou do ajuste de limiares.
+
+A saída padrão é `codigos/resultados/corrigido_seed123/`. O script recusa pasta
+existente. Salva histórico numérico, melhor época, configuração, versões,
+hashes do código, do manifesto e do modelo. As métricas Keras de precisão/recall
+sobre saídas one-hot foram retiradas do treinamento para não serem confundidas
+com médias ponderadas ou sensibilidade da classe parasitada.
+
+Para repetir **o treinamento** com outra semente e a mesma divisão:
+
+```bash
+python codigos/treinamento.py --seed 456 --saida codigos/resultados/corrigido_seed456
+```
+
+### 3. Avaliar e comparar em teste
+
+Depois de congelar o protocolo e as escolhas usando apenas treino/validação:
+
+```bash
+python codigos/avaliacao.py
+python codigos/comparar_modelos.py
+```
+
+Ambos usam `test` por padrão e exigem os quatro modelos com proveniência
+compatível. As saídas ficam em `avaliacao_test/` dentro da rodada: matrizes,
+relatórios, tabela CSV sem arredondamento e gráfico descritivo. Predições por
+imagem e probabilidades são salvas em `.npz`, com classes e caminhos, permitindo
+análises pareadas posteriores. Não altere o protocolo em função dos resultados
+do teste e depois reutilize esse mesmo teste como confirmação independente.
+
+`Parasitized` é a classe positiva (índice 0). A decisão é `argmax` da softmax.
+Precisão/recall/F1 da tabela são ponderados pelo suporte das classes; o recall
+ponderado coincide com a acurácia nesta classificação de rótulo único. As
+figuras de matrizes mostram precisão/F1 **da classe positiva**, não essa média.
+O CSV inclui sensibilidade, especificidade, VP/VN/FP/FN, F1 macro, ROC AUC e
+average precision da classe parasitada. Médias ponderadas não substituem a
+análise de falsos negativos. Não há intervalos de confiança ou testes de
+significância implementados.
+
+Outras pastas podem ser indicadas com `--dados` e `--modelos-dir` em ambos os
+scripts. Para diagnóstico da validação, acrescente `--conjunto val`; as saídas
+serão separadas em `avaliacao_val/` e identificadas como preliminares.
+
+### Verificação funcional
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Inclui transformação numérica de pixels, salvamento/recarregamento das quatro
+arquiteturas sem baixar ImageNet (`weights=None` apenas nos testes), métricas
+com respostas conhecidas, separação por grupos e rejeição de dados/pesos
+incompatíveis. Isso **não é treinamento experimental nem avaliação do dataset**.
+
+## Resultados
+
+**Rodada histórica, anterior às correções. Nenhuma métrica nova é apresentada.**
+
+Métricas **informadas na PR** para validação (8.268 imagens), atribuídas ao
+`comparar_modelos.py` original. Não foram recalculadas nesta auditoria: dataset,
+pesos, predições e CSV da rodada não estão versionados. Precisão, *recall* e *F1-score* correspondem à média
+ponderada das duas classes.
+
+| Modelo | Acurácia | Precisão | Recall | F1-score |
+|---|---|---|---|---|
+| CNN Própria | 95,82% | 95,84% | 95,82% | 95,81% |
+| EfficientNetB0 | 93,55% | 93,58% | 93,55% | 93,55% |
+| VGG16 | 93,01% | 93,18% | 93,01% | 93,00% |
+| ResNet50 | 63,93% | 65,50% | 63,93% | 63,00% |
+
+A CNN própria teve o maior valor observado nessa execução. Isso não demonstra
+superioridade geral, significância estatística, desempenho clínico ou que a
+ResNet50 seja inadequada para a tarefa. O erro de pré-processamento é comprovado;
+a magnitude e a causalidade do seu efeito exigem experimento controlado.
+
+O protocolo antigo destinava **30% de cada classe** à validação em um dataset
+balanceado: 4.134 imagens por classe, somando 8.268 de 27.558. A expressão antiga
+“15% do total de cada classe” referia-se a cada classe contribuindo com 15% do
+**dataset total**, não a uma fração de validação de 15%.
+
+### Comparação geral (histórica)
+
+O título afirmativo da imagem antiga deve ser lido com as ressalvas acima.
+Ela foi preservada como registro; o código corrigido gera títulos descritivos.
+
+![Comparação geral dos modelos](codigos/grafico_comparativo_geral.png)
+
+### Histórico de treinamento (rodada histórica)
+
+| CNN Própria | EfficientNet |
+|---|---|
+| ![CNN Própria](codigos/grafico_cnn_propria.png) | ![EfficientNet](codigos/grafico_efficientnet.png) |
+| **VGG16** | **ResNet50** |
+| ![VGG16](codigos/grafico_vgg16.png) | ![ResNet50](codigos/grafico_resnet50.png) |
+
+As matrizes e o CSV da rodada histórica não acompanham o ramo auditado. Devem
+ser recuperados dos arquivos originais, sem substituição por resultados do novo
+protocolo. O artigo em PDF também descreve a rodada histórica; sua discussão
+sobre o efeito do pré-processamento deve ser lida conforme a
+[nota de correção e as pendências](docs/auditoria_PR2.md#artigo-em-pdf).
 
 ## Referências Bibliográficas
 
@@ -186,14 +338,13 @@ Propõe o escalonamento composto, que ajusta de forma coordenada profundidade,
 largura e resolução para equilibrar desempenho e custo computacional.
 
 - **Autores:** Mingxing Tan e Quoc V. Le (ICML 2019)
-- **Artigo original:** [Acessar no PMLR](https://proceedings.mlr.press/v97/tan19a.html?ref=ji)
-
+- **Artigo original:** [Acessar no PMLR](https://proceedings.mlr.press/v97/tan19a.html)
 
 ## Autores
 
-- Alejandro Carvalho
-- Ângela Kretschmann
-- Giliard Gomes Martins
+- Alejandro Carvalho — [@alecarvalho950](https://github.com/alecarvalho950)
+- Ângela Kretschmann — [@angelakretschmann](https://github.com/angelakretschmann)
+- Giliard Gomes Martins — [@Gili10](https://github.com/Gili10)
 
 ## Orientador
 

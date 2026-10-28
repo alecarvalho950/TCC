@@ -2,13 +2,13 @@
 /dados/
 /val/
 
-# Modelos treinados e resultados gerados
+# Modelos treinados (arquivos grandes)
 /codigos/*.keras
-/codigos/matriz_confusao_*.png
-/codigos/tabela_comparativa_modelos.csv
 
 # Ambiente e configurações locais
 /venv/
 /.idea/
 __pycache__/
 *.py[cod]
+# Novas rodadas: dados, pesos, metadados/predições potencialmente identificáveis
+/codigos/resultados/

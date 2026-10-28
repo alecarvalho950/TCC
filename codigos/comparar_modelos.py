@@ -1,29 +1,26 @@
-import math
+import json
 import os
-import sys
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Rectangle
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PASTA_VALIDACAO = os.path.join(BASE_DIR, '../dados/val')
+from protocolo import (CLASSES, argumentos_avaliacao, carregar_conjunto,
+                       conferir_modelo, predizer, salvar_predicoes)
 
 # -- CONFIGURAÇÕES --
-
-PASTA_MODELOS = BASE_DIR  # Pasta onde estão os arquivos .keras
 
 # Nome exibido no gráfico
 MODELOS = {
     'CNN Própria': 'melhor_modelo_cnn_propria.keras',
     'VGG16': 'melhor_modelo_vgg16.keras',
     'ResNet50': 'melhor_modelo_resnet50.keras',
-    'EfficientNet': 'melhor_modelo_efficientnet.keras',
+    'EfficientNetB0': 'melhor_modelo_efficientnet.keras',
 }
-
-IMG_SIZE = (128, 128)
-BATCH_SIZE = 32
 
 # Classe considerada "positiva"
 CLASSE_POSITIVA = 'Parasitized'
@@ -63,16 +60,6 @@ def pp(v):
     return f'−{abs(v):.2f}'.replace('.', ',') + ' p.p.'
 
 
-def localizar_modelo(arquivo):
-    """Procura o .keras na PASTA_MODELOS e na pasta do script."""
-    pastas = [PASTA_MODELOS, os.path.dirname(os.path.abspath(__file__))]
-    for pasta in pastas:
-        caminho = os.path.join(pasta, arquivo)
-        if os.path.exists(caminho):
-            return caminho
-    return None
-
-
 def calcular_resultados(y_true, y_pred, class_names):
     """Calcula as métricas de um modelo a partir de y_true e y_pred."""
     from sklearn.metrics import classification_report, confusion_matrix
@@ -100,66 +87,14 @@ def calcular_resultados(y_true, y_pred, class_names):
         'Especificidade (%)': 100.0 * tn / (tn + fp) if (tn + fp) else 0.0,
         'Falsos Negativos': fn,
         'Falsos Positivos': fp,
-        'Imagens de Validação': tp + fn + fp + tn,
+        'Imagens Avaliadas': tp + fn + fp + tn,
+        'F1 Macro (%)': rel['macro avg']['f1-score'] * 100,
+        'Verdadeiros Positivos': tp, 'Verdadeiros Negativos': tn,
     }
 
 
-def carregar_validacao():
-    """Carrega o conjunto de validação a partir de dados/val (sem embaralhar)."""
-    from tensorflow.keras.utils import image_dataset_from_directory
-
-    if not os.path.isdir(PASTA_VALIDACAO):
-        print(f'\n[ERRO] Pasta de validação não encontrada:\n       {PASTA_VALIDACAO}')
-        print('       Execute primeiro: python dividir_dados.py --executar')
-        print('       (ou ajuste a variável PASTA_VALIDACAO no início do script).')
-        sys.exit(1)
-
-    print('Carregando conjunto de validação (dados/val)...')
-    val_gen = image_dataset_from_directory(
-        PASTA_VALIDACAO,
-        image_size=IMG_SIZE,
-        batch_size=BATCH_SIZE,
-        label_mode='categorical',
-        shuffle=False,  # Ordem fixa e determinística
-    )
-    class_names = list(val_gen.class_names)
-    print(f'Classes encontradas: {class_names}')
-
-    if CLASSE_POSITIVA not in class_names or len(class_names) != 2:
-        print(f"\n[ERRO] Esperava 2 classes incluindo '{CLASSE_POSITIVA}', "
-              f'mas encontrei: {class_names}')
-        sys.exit(1)
-    return val_gen, class_names
-
-
-def avaliar_modelo(caminho, val_gen, class_names):
-    """Carrega um .keras, prediz o conjunto de validação e devolve métricas."""
-    import tensorflow as tf
-    from sklearn.metrics import classification_report
-    from tensorflow.keras.models import load_model
-
-    model = load_model(caminho)
-
-    y_true, y_pred = [], []
-    for images, labels in val_gen:
-        preds = model(images, training=False).numpy()
-        y_true.extend(np.argmax(labels.numpy(), axis=1))
-        y_pred.extend(np.argmax(preds, axis=1))
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
-
-    print(classification_report(y_true, y_pred, target_names=class_names,
-                                digits=4, zero_division=0))
-
-    resultados = calcular_resultados(y_true, y_pred, class_names)
-
-    del model
-    tf.keras.backend.clear_session()
-    return resultados
-
-
 # -- GRÁFICO: RANKING + TABELA DE MÉTRICAS
-def gerar_grafico(df, caminho_saida):
+def gerar_grafico(df, caminho_saida, conjunto='test'):
     n = len(df)
     melhor = df.iloc[0]
     nome_criterio = NOMES_CURTOS[CRITERIO]
@@ -171,36 +106,36 @@ def gerar_grafico(df, caminho_saida):
 
     # -- Painel esquerdo: ranking --
     valores = df[CRITERIO].values
-    xmin = max(0, 5 * math.floor((valores.min() - 3) / 5))
+    xmin = 0
     ys = np.arange(n)[::-1]  # 1º lugar no topo
 
     for i, (y, v) in enumerate(zip(ys, valores)):
-        cor = COR_MELHOR if i == 0 else COR_OUTROS
+        eh_maximo = np.isclose(v, valores.max(), atol=1e-10, rtol=0)
+        cor = COR_MELHOR if eh_maximo else COR_OUTROS
         ax1.hlines(y, xmin, v, color=COR_LINHA, lw=4, zorder=1)
         ax1.scatter(v, y, s=520 if i == 0 else 380, color=cor, zorder=2,
                     edgecolor='white', linewidth=2)
         ax1.text(v + 1.1, y + (0.08 if i else 0), pct(v), va='center',
                  ha='left', fontsize=13, weight='bold', color=COR_TEXTO)
         if i > 0:
-            ax1.text(v + 1.1, y - 0.22, f'{pp(valores[0] - v)} vs. melhor',
+            ax1.text(v + 1.1, y - 0.22, ('Empate no valor' if eh_maximo else f'{pp(valores[0] - v)} vs. máximo'),
                      va='center', ha='left', fontsize=9, color='#666666')
 
     ax1.set_yticks(ys)
-    ax1.set_yticklabels([f'{i + 1}º  {m}' for i, m in enumerate(df['Modelo'])],
+    ax1.set_yticklabels(list(df['Modelo']),
                         fontsize=12)
     ax1.get_yticklabels()[0].set_weight('bold')
     ax1.set_ylim(-0.7, n - 0.3)
     ax1.set_xlim(xmin, 112)
-    ax1.set_xticks(range(xmin, 101, 5))
-    ax1.set_xticklabels([f'{t}%' for t in range(xmin, 101, 5)], fontsize=10)
+    ax1.set_xticks(range(xmin, 101, 20))
+    ax1.set_xticklabels([f'{t}%' for t in range(xmin, 101, 20)], fontsize=10)
     ax1.grid(axis='x', linestyle='--', alpha=0.4)
     ax1.set_axisbelow(True)
     ax1.tick_params(length=0)
     for lado in ('top', 'right', 'left'):
         ax1.spines[lado].set_visible(False)
-    ax1.set_xlabel(f'{nome_criterio} (%) — o eixo começa em {xmin}% '
-                   'para evidenciar as diferenças', fontsize=10)
-    ax1.set_title(f'Ranking por {nome_criterio}', fontsize=13, weight='bold',
+    ax1.set_xlabel(f'{nome_criterio} ponderado (%)', fontsize=10)
+    ax1.set_title(f'{nome_criterio} ponderado observado', fontsize=13, weight='bold',
                   pad=14)
 
     # -- Painel direito: tabela com destaque do melhor por coluna --
@@ -214,11 +149,11 @@ def gerar_grafico(df, caminho_saida):
                  fontsize=12, weight='bold')
 
     for i, row in df.iterrows():
-        ax2.text(-0.08, i + 0.5, f'{i + 1}º  {row["Modelo"]}', ha='right',
+        ax2.text(-0.08, i + 0.5, str(row['Modelo']), ha='right',
                  va='center', fontsize=12,
                  weight='bold' if i == 0 else 'normal')
         for j, met in enumerate(METRICAS):
-            eh_melhor = np.isclose(row[met], df[met].max())
+            eh_melhor = np.isclose(row[met], df[met].max(), atol=1e-10, rtol=0)
             ax2.add_patch(Rectangle(
                 (j, i), 1, 1,
                 facecolor=COR_CEL_MELHOR if eh_melhor else COR_CEL_NORMAL,
@@ -228,22 +163,16 @@ def gerar_grafico(df, caminho_saida):
                      weight='bold' if eh_melhor else 'normal',
                      color=COR_TEXTO)
 
-    ax2.set_title('Todas as métricas',
+    ax2.set_title('Métricas (médias ponderadas, exceto acurácia)',
                   fontsize=13, weight='bold', pad=14)
 
-    if n > 1:
-        titulo = (f'{melhor["Modelo"]} foi a arquitetura mais efetiva na '
-                  f'detecção de malária ({nome_criterio} de '
-                  f'{pct(melhor[CRITERIO])})')
-        total_val = f'{int(melhor["Imagens de Validação"]):,}'.replace(',', '.')
-        subtitulo = ('Comparação entre as arquiteturas de CNN no conjunto de '
-                     f'validação ({total_val} imagens)')
-    else:
-        titulo = (f'Desempenho do modelo {melhor["Modelo"]} na detecção de '
-                  f'malária ({nome_criterio} de {pct(melhor[CRITERIO])})')
-        subtitulo = ('Apenas um modelo avaliado - treine os demais para '
-                     'habilitar a comparação')
+    titulo = 'Comparação descritiva dos modelos nesta rodada'
+    total = f'{int(melhor["Imagens Avaliadas"]):,}'.replace(',', '.')
+    rotulo = 'teste' if conjunto == 'test' else 'validação'
+    subtitulo = f'{rotulo}: {total} imagens; sem inferência de superioridade estatística'
 
+    if conjunto == 'val':
+        subtitulo += ' — PRELIMINAR: validação usada na seleção dos pesos'
     fig.suptitle(titulo, fontsize=15, weight='bold', y=1.03)
     fig.text(0.5, 0.965, subtitulo, ha='center', fontsize=11, color='#555555')
 
@@ -254,65 +183,38 @@ def gerar_grafico(df, caminho_saida):
 
 # -- EXECUÇÃO PRINCIPAL --
 def main():
-    print('=' * 75)
-    print('COMPARAÇÃO AUTOMÁTICA DE MODELOS - TCC (detecção de malária)')
-    print('=' * 75)
-
-    # Descobre quais modelos já foram treinados
-    encontrados = {}
-    for nome, arquivo in MODELOS.items():
-        caminho = localizar_modelo(arquivo)
-        if caminho is None:
-            print(f"[AVISO] Modelo '{nome}' ainda não foi treinado "
-                  f"('{arquivo}' não encontrado). Pulando...")
-        else:
-            encontrados[nome] = caminho
-
-    if not encontrados:
-        print('\n[ERRO] Nenhum arquivo .keras foi encontrado.')
-        print('       Execute o treinamento.py primeiro ou ajuste a variável '
-              'PASTA_MODELOS.')
-        sys.exit(1)
-
-    # Carrega o conjunto de validação uma única vez
-    val_gen, class_names = carregar_validacao()
-
-    # Avalia cada modelo encontrado
+    from sklearn.metrics import classification_report, roc_auc_score, average_precision_score
+    args = argumentos_avaliacao()
+    caminhos = {nome: args.modelos_dir / arq for nome, arq in MODELOS.items()}
+    # Uma comparação entre QUATRO modelos não pode omitir falhas silenciosamente.
+    metadados = [conferir_modelo(p, args.manifesto_sha256) for p in caminhos.values()]
+    for campo in ('seed', 'image_size', 'batch_size', 'epocas_maximas', 'learning_rate'):
+        if any(m[campo] != metadados[0][campo] for m in metadados):
+            raise ValueError(f'Rodadas incompatíveis: {campo}')
+    conjunto = carregar_conjunto(args.dados, args.conjunto)
+    arquivos = [os.path.relpath(p, args.dados) for p in conjunto.file_paths]
     linhas = []
-    for nome, caminho in encontrados.items():
-        print('\n' + '=' * 75)
-        print(f'Avaliando modelo: [{nome}]  ({os.path.basename(caminho)})')
-        print('=' * 75)
-        try:
-            resultados = avaliar_modelo(caminho, val_gen, class_names)
-        except Exception as erro: 
-            print(f"[AVISO] Falha ao avaliar '{nome}': {erro}\n"
-                  '        Pulando este modelo...')
-            continue
-        linhas.append({'Modelo': nome, **resultados})
-
-    if not linhas:
-        print('\n[ERRO] Nenhum modelo pôde ser avaliado.')
-        sys.exit(1)
-
-    # Tabela final ordenada pelo critério
-    df = pd.DataFrame(linhas)
-    df = df.sort_values(CRITERIO, ascending=False).reset_index(drop=True)
-
-    print('\n' + '=' * 75)
-    print(f'TABELA COMPARATIVA FINAL (ordenada por {CRITERIO})')
-    print('=' * 75)
+    for nome, caminho in caminhos.items():
+        y, pred, prob = predizer(caminho, conjunto)
+        stem = caminho.stem.replace('melhor_modelo_', '')
+        salvar_predicoes(args, stem, caminho, y, pred, prob, arquivos)
+        rel = classification_report(y, pred, labels=[0, 1], target_names=CLASSES,
+                                    digits=4, zero_division=0, output_dict=True)
+        (args.saida / f'relatorio_{stem}.json').write_text(
+            json.dumps(rel, ensure_ascii=False, indent=2), encoding='utf-8')
+        resultados = calcular_resultados(y, pred, CLASSES)
+        positivos = y == CLASSES.index(CLASSE_POSITIVA)
+        score = prob[:, CLASSES.index(CLASSE_POSITIVA)]
+        resultados['ROC AUC Parasitized'] = roc_auc_score(positivos, score)
+        resultados['Average Precision Parasitized'] = average_precision_score(positivos, score)
+        linhas.append({'Modelo': nome, 'Conjunto': args.conjunto, **resultados})
+    df = pd.DataFrame(linhas).sort_values(CRITERIO, ascending=False).reset_index(drop=True)
     print(df.round(2).to_string(index=False))
-    print('=' * 75)
-
-    df.round(2).to_csv(os.path.join(BASE_DIR, ARQ_CSV), index=False)
-    print(f"\n[arquivo] Tabela salva como '{ARQ_CSV}'")
-
-    # 5) Gráfico
-    gerar_grafico(df, os.path.join(BASE_DIR, ARQ_GRAFICO))
-    print(f"[arquivo] Gráfico salvo como '{ARQ_GRAFICO}'")
-
-    plt.show()
+    # Preserva precisão numérica; arredondamento apenas na exibição.
+    df.to_csv(args.saida / ARQ_CSV, index=False)
+    gerar_grafico(df, args.saida / ARQ_GRAFICO, args.conjunto)
+    if args.conjunto == 'val':
+        print('PRELIMINAR: validação usada para selecionar pesos; não é teste.')
 
 
 if __name__ == '__main__':

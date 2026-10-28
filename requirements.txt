@@ -1,0 +1,8 @@
+# Versões da verificação funcional do código corrigido (Python 3.12, CPU/Linux).
+# Não reconstituem o ambiente experimental histórico, que não foi registrado.
+tensorflow==2.20.0
+keras==3.15.1
+numpy==2.3.5
+pandas==2.2.3
+matplotlib==3.10.8
+scikit-learn==1.8.0
